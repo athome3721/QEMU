@@ -158,6 +158,7 @@ static uint32_t ssi_sd_transfer(SSISlave *dev, uint32_t val)
             }
             s->mode = SSI_SD_RESPONSE;
             s->response_pos = 0;
+        s->stopping = 1; /*proto need at least 8 clk before data out */
         } else {
             s->cmdarg[s->arglen++] = val;
         }
