@@ -970,13 +970,9 @@ static sd_rsp_type_t sd_normal_command(SDState *sd,
 
     /* Block write commands (Class 4) */
     case 24:	/* CMD24:  WRITE_SINGLE_BLOCK */
-        if (sd->spi)
-            goto unimplemented_cmd;
         switch (sd->state) {
         case sd_transfer_state:
             /* Writing in SPI mode not implemented.  */
-            if (sd->spi)
-                break;
             sd->state = sd_receivingdata_state;
             sd->data_start = addr;
             sd->data_offset = 0;
@@ -1753,9 +1749,9 @@ uint8_t sd_read_data(SDState *sd)
     return ret;
 }
 
-bool sd_data_ready(SDState *sd)
+int sd_data_ready(SDState *sd)
 {
-    return sd->state == sd_sendingdata_state;
+    return sd->state == sd_sendingdata_state?1:sd->state == sd_receivingdata_state?2:0;
 }
 
 void sd_enable(SDState *sd, bool enable)

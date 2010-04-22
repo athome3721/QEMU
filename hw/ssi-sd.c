@@ -33,6 +33,8 @@ typedef enum {
     SSI_SD_RESPONSE,
     SSI_SD_DATA_START,
     SSI_SD_DATA_READ,
+    SSI_SD_DATA_START_WRITE,
+    SSI_SD_DATA_WRITE,
 } ssi_sd_mode;
 
 typedef struct {
@@ -172,10 +174,13 @@ static uint32_t ssi_sd_transfer(SSISlave *dev, uint32_t val)
             DPRINTF("Response 0x%02x\n", s->response[s->response_pos]);
             return s->response[s->response_pos++];
         }
-        if (sd_data_ready(s->sd)) {
+        if (sd_data_ready(s->sd)==1) {
             DPRINTF("Data read\n");
             s->mode = SSI_SD_DATA_START;
-        } else {
+        } else if (sd_data_ready(s->sd)==2) {
+            s->mode = SSI_SD_DATA_START_WRITE;
+			}
+		 else {
             DPRINTF("End of command\n");
             s->mode = SSI_SD_CMD;
         }
@@ -191,6 +196,18 @@ static uint32_t ssi_sd_transfer(SSISlave *dev, uint32_t val)
             s->mode = SSI_SD_CMD;
         }
         return val;
+	case SSI_SD_DATA_START_WRITE:
+        DPRINTF("Start write block\n");
+		if(val==0xfe)
+        s->mode = SSI_SD_DATA_WRITE;
+        return 0xff;
+	case SSI_SD_DATA_WRITE:
+		sd_write_data(s->sd,val);
+        if (!sd_data_ready(s->sd)) {
+            DPRINTF("Data write end\n");
+            s->mode = SSI_SD_CMD;
+        }
+		return 0xff;
     }
     /* Should never happen.  */
     return 0xff;
