@@ -35,6 +35,8 @@ enum {
 
 #if !defined(CONFIG_USER_ONLY)
 
+static int cpu_in_debug;
+
 /* no MMU emulation */
 int no_mmu_map_address (CPUMIPSState *env, hwaddr *physical, int *prot,
                         target_ulong address, int rw, int access_type)
@@ -106,7 +108,7 @@ static int get_physical_address (CPUMIPSState *env, hwaddr *physical,
     /* User mode can only access useg/xuseg */
     int user_mode = (env->hflags & MIPS_HFLAG_MODE) == MIPS_HFLAG_UM;
     int supervisor_mode = (env->hflags & MIPS_HFLAG_MODE) == MIPS_HFLAG_SM;
-    int kernel_mode = !user_mode && !supervisor_mode;
+    int kernel_mode = cpu_in_debug || (!user_mode && !supervisor_mode);
 #if defined(TARGET_MIPS64)
     int UX = (env->CP0_Status & (1 << CP0St_UX)) != 0;
     int SX = (env->CP0_Status & (1 << CP0St_SX)) != 0;
@@ -258,9 +260,14 @@ hwaddr cpu_get_phys_page_debug(CPUMIPSState *env, target_ulong addr)
 {
     hwaddr phys_addr;
     int prot;
+    cpu_in_debug = 1;
 
     if (get_physical_address(env, &phys_addr, &prot, addr, 0, ACCESS_INT) != 0)
+	{
+    cpu_in_debug = 0;
         return -1;
+	}
+    cpu_in_debug = 0;
     return phys_addr;
 }
 #endif
