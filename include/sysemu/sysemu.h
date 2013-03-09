@@ -159,7 +159,7 @@ int do_pcie_aer_inject_error(Monitor *mon,
 
 /* serial ports */
 
-#define MAX_SERIAL_PORTS 4
+#define MAX_SERIAL_PORTS 12
 
 extern CharDriverState *serial_hds[MAX_SERIAL_PORTS];
 

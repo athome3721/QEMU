@@ -95,6 +95,99 @@ struct mips_def_t {
 static const mips_def_t mips_defs[] =
 {
     {
+        .name = "LS232",
+      //  .CP0_PRid = 0x00019300,
+	.CP0_PRid = 0x00004220,
+        .CP0_Config0 = MIPS_CONFIG0 | (0x1 << CP0C0_AR) |
+                    (MMU_TYPE_R4000 << CP0C0_MT),
+	.CP0_Config1 = ((1 << CP0C1_M) | (0 << CP0C1_C2) | (0 << CP0C1_MD) | 
+			(1 << CP0C1_PC) | (0 << CP0C1_WR) | (0 << CP0C1_CA) | 
+			(1 << CP0C1_EP) | (1 << CP0C1_FP))| (31 << CP0C1_MMU) |
+		        (1 << CP0C1_IS) | (4 << CP0C1_IL) | (3 << CP0C1_IA) |
+		        (1 << CP0C1_DS) | (4 << CP0C1_DL) | (3 << CP0C1_DA),
+
+#if 0
+	.CP0_Config1 = MIPS_CONFIG1 | (31 << CP0C1_MMU) |
+		        // (0 << CP0C1_IS) | (3 << CP0C1_IL) | (1 << CP0C1_IA) |
+		        (1 << CP0C1_IS) | (4 << CP0C1_IL) | (3 << CP0C1_IA) |
+		       // (0 << CP0C1_DS) | (3 << CP0C1_DL) | (1 << CP0C1_DA),
+		        (1 << CP0C1_DS) | (4 << CP0C1_DL) | (3 << CP0C1_DA),
+#endif
+//        .CP0_Config1 = MIPS_CONFIG1 | (1 << CP0C1_FP) | (15 << CP0C1_MMU) |
+//		    (0 << CP0C1_IS) | (3 << CP0C1_IL) | (1 << CP0C1_IA) |
+//		    (0 << CP0C1_DS) | (3 << CP0C1_DL) | (1 << CP0C1_DA),
+        .CP0_Config2 = MIPS_CONFIG2,
+        .CP0_Config3 = MIPS_CONFIG3 | (0 << CP0C3_VInt),
+        .SYNCI_Step = 32,
+        .CCRes = 2,
+        /* No DSP implemented. */
+        //.CP0_Status_rw_bitmask = 0x017800E0,  //LS232
+        .CP0_Status_rw_bitmask = 0xFC58FF1F,  //LS232
+        //.CP0_Status_rw_bitmask = 0x3678FF1F,  //24KF
+       // .CP0_Status_rw_bitmask = 0xFFFFFFFF,  //24KF
+        .CP1_fcr0 = (1 << FCR0_F64) | (1 << FCR0_L) | (1 << FCR0_W) |
+                    (1 << FCR0_D) | (1 << FCR0_S) | (0x93 << FCR0_PRID),
+        .SEGBITS = 32,
+        .PABITS = 32,
+        .insn_flags = CPU_MIPS32R2 | ASE_MIPS16,
+        .mmu_type = MMU_TYPE_R4000,
+    },
+    {
+    	.name = "LS232_1",
+        .CP0_PRid = 0x00018000,
+//	.CP0_PRid = 0x00004220,
+	.CP0_Config0 = MIPS_CONFIG0 | (MMU_TYPE_R4000 << CP0C0_MT) |
+			(1 << CP0C0_AR) | (0 << CP0C0_AT),
+/*	.CP0_Config1 = ((1 << CP0C1_M) | (0 << CP0C1_C2) | (0 << CP0C1_MD) | 
+			(1 << CP0C1_PC) | (0 << CP0C1_WR) | (0 << CP0C1_CA) | 
+			(1 << CP0C1_EP) | (1 << CP0C1_FP))| (31 << CP0C1_MMU) |
+		        (1 << CP0C1_IS) | (4 << CP0C1_IL) | (4 << CP0C1_IA) |
+		        (1 << CP0C1_DS) | (4 << CP0C1_DL) | (4 << CP0C1_DA),
+*/
+	.CP0_Config1 = MIPS_CONFIG1 | (31 << CP0C1_MMU) |
+		        (0 << CP0C1_IS) | (3 << CP0C1_IL) | (1 << CP0C1_IA) |
+		        (0 << CP0C1_DS) | (3 << CP0C1_DL) | (1 << CP0C1_DA),
+		        //(1 << CP0C1_DS) | (4 << CP0C1_DL) | (3 << CP0C1_DA),
+//        .CP0_Config1 = MIPS_CONFIG1 | (15 << CP0C1_MMU) |
+//		    (0 << CP0C1_IS) | (3 << CP0C1_IL) | (1 << CP0C1_IA) |
+//		    (0 << CP0C1_DS) | (3 << CP0C1_DL) | (1 << CP0C1_DA),
+        .CP0_Config2 = MIPS_CONFIG2,
+	.CP0_Config3 = ((0 << CP0C3_M) | (1 << CP0C3_DSPP) | (0 << CP0C3_LPA) |
+			(0 << CP0C3_VEIC) | (1 << CP0C3_VInt) | (0 << CP0C3_SP) |
+			(0 << CP0C3_SM) | (0 << CP0C3_TL)),
+        .SYNCI_Step = 32,
+        .CCRes = 2,
+        .CP0_Status_rw_bitmask = 0x1278FF17, //KEY
+//        .CP0_Status_rw_bitmask = 0x017800E0,
+        .SEGBITS = 32,
+        .PABITS = 32,
+        .insn_flags = CPU_MIPS32 | ASE_DSP,
+        .mmu_type = MMU_TYPE_R4000,
+	
+	/*
+	.name = "LS232",
+	.CP0_PRid = 0x00004220,
+	.CP0_Config0 = MIPS_CONFIG0 | (MMU_TYPE_R4000 << CP0C0_MT) |
+			(1 << CP0C0_AR) | (0 << CP0C0_AT),
+	.CP0_Config1 = ((1 << CP0C1_M) | (0 << CP0C1_C2) | (0 << CP0C1_MD) | 
+			(1 << CP0C1_PC) | (0 << CP0C1_WR) | (0 << CP0C1_CA) | 
+			(1 << CP0C1_EP) | (1 << CP0C1_FP))| (31 << CP0C1_MMU) |
+		        (1 << CP0C1_IS) | (4 << CP0C1_IL) | (4 << CP0C1_IA) |
+		        (1 << CP0C1_DS) | (4 << CP0C1_DL) | (4 << CP0C1_DA),
+	.CP0_Config2 = MIPS_CONFIG2,
+	.CP0_Config3 = ((0 << CP0C3_M) | (1 << CP0C3_DSPP) | (0 << CP0C3_LPA) |
+			(0 << CP0C3_VEIC) | (1 << CP0C3_VInt) | (0 << CP0C3_SP) |
+			(0 << CP0C3_SM) | (0 << CP0C3_TL)),
+        .SYNCI_Step = 32,
+        .CCRes = 2,
+        .CP0_Status_rw_bitmask = 0x017800E0,
+        .SEGBITS = 32,
+        .PABITS = 32,
+        .insn_flags = CPU_MIPS32R2 | ASE_DSP,
+        .mmu_type = MMU_TYPE_R4000,
+	*/
+    },
+    {
         .name = "4Kc",
         .CP0_PRid = 0x00018000,
         .CP0_Config0 = MIPS_CONFIG0 | (MMU_TYPE_R4000 << CP0C0_MT),
@@ -332,6 +425,23 @@ static const mips_def_t mips_defs[] =
         .SEGBITS = 32,
         .PABITS = 32,
         .insn_flags = CPU_MIPS32R2 | ASE_MIPS16 | ASE_DSP | ASE_DSPR2,
+        .mmu_type = MMU_TYPE_R4000,
+    },
+    {
+        .name = "gs2f",
+        .CP0_PRid = 0x00006302,
+        /* No L2 cache, icache size 8k, dcache size 8k, cached coherency. */
+        .CP0_Config0 = (3 << 16) | (0x4 << 9) | (0x4 << 6) | (0x3 << 4) | (0x3 << CP0C0_K0),
+	/* Note: Config1 is only used internally, the R4000 has only Config0. */
+        .CP0_Config1 = (1 << CP0C1_FP) | (63 << CP0C1_MMU),
+        .SYNCI_Step = 16,
+        .CCRes = 2,
+        .CP0_Status_rw_bitmask = 0x3678FFFF,
+	/* The R4000 has a full 64bit FPU but doesn't use the fcr0 bits. */
+        .CP1_fcr0 = (0x5 << FCR0_PRID) | (0x0 << FCR0_REV),
+        .SEGBITS = 40,
+        .PABITS = 36,
+        .insn_flags = CPU_MIPS3 | CPU_MIPS64,
         .mmu_type = MMU_TYPE_R4000,
     },
 #if defined(TARGET_MIPS64)
