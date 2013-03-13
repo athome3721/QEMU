@@ -1300,7 +1300,7 @@ static void sysbus_ahci_reset(DeviceState *dev)
 static int sysbus_ahci_init(SysBusDevice *dev)
 {
     SysbusAHCIState *s = FROM_SYSBUS(SysbusAHCIState, dev);
-    ahci_init(&s->ahci, &dev->qdev, NULL, s->num_ports);
+    ahci_init(&s->ahci, &dev->qdev, &dma_context_memory, s->num_ports);
 
     sysbus_init_mmio(dev, &s->ahci.mem);
     sysbus_init_irq(dev, &s->ahci.irq);
