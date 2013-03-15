@@ -66,15 +66,29 @@ typedef struct {
     uint8_t crc;
 } SDRequest;
 
+enum SDCardStates {
+    sd_inactive_state = -1,
+    sd_idle_state = 0,
+    sd_ready_state,
+    sd_identification_state,
+    sd_standby_state,
+    sd_transfer_state,
+    sd_sendingdata_state,
+    sd_receivingdata_state,
+    sd_programming_state,
+    sd_disconnect_state,
+};
+
 typedef struct SDState SDState;
 
 SDState *sd_init(BlockDriverState *bs, bool is_spi);
 int sd_do_command(SDState *sd, SDRequest *req,
                   uint8_t *response);
-void sd_write_data(SDState *sd, uint8_t value);
+uint8_t sd_write_data(SDState *sd, uint8_t value);
 uint8_t sd_read_data(SDState *sd);
 void sd_set_cb(SDState *sd, qemu_irq readonly, qemu_irq insert);
 int sd_data_ready(SDState *sd);
 void sd_enable(SDState *sd, bool enable);
+void sd_set_state(SDState *sd, int state);
 
 #endif	/* __hw_sd_h */

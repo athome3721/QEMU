@@ -3,6 +3,8 @@
  *
  * Copyright (c) 2007-2009 CodeSourcery.
  * Written by Paul Brook
+ * Copyright (c) 2013 qiaochong@loongson.cn
+ * Copyright (c) 2013 yanggangqiang@loongson.cn
  *
  * This code is licensed under the GNU GPL v2.
  *
@@ -35,6 +37,7 @@ typedef enum {
     SSI_SD_DATA_READ,
     SSI_SD_DATA_START_WRITE,
     SSI_SD_DATA_WRITE,
+    SSI_SD_DATA_W_TRANS,
 } ssi_sd_mode;
 
 typedef struct {
@@ -71,10 +74,15 @@ static uint32_t ssi_sd_transfer(SSISlave *dev, uint32_t val)
     ssi_sd_state *s = FROM_SSI_SLAVE(ssi_sd_state, dev);
 
     /* Special case: allow CMD12 (STOP TRANSMISSION) while reading data.  */
-    if (s->mode == SSI_SD_DATA_READ && val == 0x4d) {
+    if (s->mode == SSI_SD_DATA_READ && val == 0x4c){        
         s->mode = SSI_SD_CMD;
         /* There must be at least one byte delay before the card responds.  */
         s->stopping = 1;
+    }
+    if(s->mode == SSI_SD_DATA_W_TRANS && val == 0xfd){
+        s->mode = SSI_SD_CMD;
+        sd_set_state(s->sd, sd_transfer_state);
+        return 0xff;
     }
 
     switch (s->mode) {
@@ -179,8 +187,7 @@ static uint32_t ssi_sd_transfer(SSISlave *dev, uint32_t val)
             s->mode = SSI_SD_DATA_START;
         } else if (sd_data_ready(s->sd)==2) {
             s->mode = SSI_SD_DATA_START_WRITE;
-			}
-		 else {
+	}else {
             DPRINTF("End of command\n");
             s->mode = SSI_SD_CMD;
         }
@@ -192,22 +199,31 @@ static uint32_t ssi_sd_transfer(SSISlave *dev, uint32_t val)
     case SSI_SD_DATA_READ:
         val = sd_read_data(s->sd);
         if (!sd_data_ready(s->sd)) {
-            DPRINTF("Data read end\n");
             s->mode = SSI_SD_CMD;
         }
         return val;
-	case SSI_SD_DATA_START_WRITE:
-        DPRINTF("Start write block\n");
-		if(val==0xfe)
-        s->mode = SSI_SD_DATA_WRITE;
-        return 0xff;
-	case SSI_SD_DATA_WRITE:
-		sd_write_data(s->sd,val);
-        if (!sd_data_ready(s->sd)) {
-            DPRINTF("Data write end\n");
-            s->mode = SSI_SD_CMD;
+    case SSI_SD_DATA_START_WRITE:
+        if((s->cmd == 0x18 && val == 0xfe) || (s->cmd == 0x19 && val == 0xfc)){
+            s->mode = SSI_SD_DATA_WRITE;
         }
-		return 0xff;
+         DPRINTF("VAL==0x%08x\n",val);
+        return 0xff;
+    case SSI_SD_DATA_W_TRANS:
+
+        if(val == 0xfc){
+            s->mode = SSI_SD_DATA_WRITE;
+        sd_set_state(s->sd, sd_receivingdata_state);
+        }
+        return 0xff;
+    case SSI_SD_DATA_WRITE:
+	val = sd_write_data(s->sd,val);
+        if (!sd_data_ready(s->sd)) {
+            if(s->cmd == 0x19)
+                s->mode = SSI_SD_DATA_W_TRANS;
+            else
+                s->mode = SSI_SD_CMD;
+        }
+		return val;
     }
     /* Should never happen.  */
     return 0xff;
