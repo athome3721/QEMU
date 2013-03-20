@@ -3,6 +3,7 @@ obj-y += mips_addr.o mips_timer.o mips_int.o
 obj-y += gt64xxx.o mc146818rtc.o
 obj-$(CONFIG_FULONG) += bonito.o vt82c686.o mips_fulong2e.o
 obj-y += mips_ls1a.o synopGMAC.o ls1a_ac97.o ls1a_acpi.o ls1a_dma.o ls1a_fb.o ls1a_i2c.o ls1a_nand.o ls1a_rtc.o ls1a_spi.o wdt_ls1a.o ls1a_can.o mips_ls1b.o ls1b_nand.o ls1b_dma.o
+obj-y += mips_ls3a.o
 obj-y += framebuffer.o
 
 obj-y := $(addprefix ../,$(obj-y))
