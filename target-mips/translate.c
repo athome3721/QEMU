@@ -4571,31 +4571,31 @@ static void gen_mfc0(DisasContext *ctx, TCGv arg, int reg, int sel)
         case 1:
 //            gen_helper_mfc0_performance1(arg);
             rn = "Performance1";
-//            break;
+            break;
         case 2:
 //            gen_helper_mfc0_performance2(arg);
             rn = "Performance2";
-//            break;
+            break;
         case 3:
 //            gen_helper_mfc0_performance3(arg);
             rn = "Performance3";
-//            break;
+            break;
         case 4:
 //            gen_helper_mfc0_performance4(arg);
             rn = "Performance4";
-//            break;
+            break;
         case 5:
 //            gen_helper_mfc0_performance5(arg);
             rn = "Performance5";
-//            break;
+            break;
         case 6:
 //            gen_helper_mfc0_performance6(arg);
             rn = "Performance6";
-//            break;
+            break;
         case 7:
 //            gen_helper_mfc0_performance7(arg);
             rn = "Performance7";
-//            break;
+            break;
         default:
             goto die;
         }
