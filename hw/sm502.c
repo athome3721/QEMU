@@ -1,52 +1,30 @@
 #include "hw.h"
-#include "monitor.h"
 #include "sysbus.h"
-#include "pci.h"
-#include "dma.h"
-#include "cpu-common.h"
+#include "pci/pci.h"
+#include "sysemu/sysemu.h"
+#include "sysemu/dma.h"
+#include "qemu/range.h"
+#include "qdev-addr.h"
 
 #define PCI_VENDOR_ID_SM502 0x126f
 #define PCI_DEVICE_ID_SM502 0x501
 
-void *sm502_new(uint32_t local_mem_bytes, qemu_irq irq, CharDriverState *chr);
-void sm502_update_membase(void *opaque,target_phys_addr_t membase);
-void sm502_update_iobase(void *opaque,target_phys_addr_t membase);
-
-typedef struct SM502State{
-    int mem;
-    int ohci_mem;
-    target_phys_addr_t *localmem_base;
-    qemu_irq irq;
-} SM502State;
+void *sm502_new(uint32_t local_mem_bytes, qemu_irq irq,
+                CharDriverState *chr, MemoryRegion *memcontainer, MemoryRegion *iocontainer, DeviceState **pusbdev);
 
 
 typedef struct SM502PciState {
     PCIDevice card;
     void *sm502;
     void *serial;
+    DeviceState *usbdev;
+    MemoryRegion memcontainer;
+    MemoryRegion iocontainer;
 } SM502PciState;
 
 
-
-static void sm502_pci_map(PCIDevice *pci_dev, int region_num,
-        pcibus_t addr, pcibus_t size, int type)
-{
-    struct SM502PciState *d = (struct SM502PciState *)pci_dev;
-
-    switch(region_num)
-    {
-     case 0:
-    sm502_update_membase(d->sm502,addr);
-    break;
-     case 1:
-    /*usb ohci*/
-    sm502_update_iobase(d->sm502,addr);
-    break;
-    }
-}
-
-int pci_sm502_init(PCIBus *bus,
-                 int devfn, CharDriverState *chr)
+int pci_sm502_init(PCIBus *bus, int devfn, CharDriverState *chr);
+int pci_sm502_init(PCIBus *bus, int devfn, CharDriverState *chr)
 {
     PCIDevice *dev;
 
@@ -57,7 +35,7 @@ int pci_sm502_init(PCIBus *bus,
     return 0;
 }
 
-static int pci_sm502_initfn(PCIDevice *dev)
+static int sm502_initfn(PCIDevice *dev)
 {
     struct SM502PciState *d;
     d = DO_UPCAST(struct SM502PciState, card, dev);
@@ -74,28 +52,37 @@ static int pci_sm502_initfn(PCIDevice *dev)
     d->card.config[PCI_HEADER_TYPE]     = PCI_HEADER_TYPE_NORMAL;
     d->card.config[PCI_INTERRUPT_PIN]   = 1;     /* interrupt pin 0 */
 
-    pci_register_bar(&d->card, 0, 0x2000000, PCI_BASE_ADDRESS_SPACE_MEMORY,
-                     sm502_pci_map);
-    pci_register_bar(&d->card, 1, 0x200000,
-                           PCI_BASE_ADDRESS_SPACE_MEMORY, sm502_pci_map);
-    d->sm502 = sm502_new(0x2000000,d->card.irq[0],d->serial);
+    d->sm502 = sm502_new(0x2000000, d->card.irq[0],d->serial, &d->memcontainer, &d->iocontainer, &d->usbdev);
+
+    pci_register_bar(&d->card, 0, PCI_BASE_ADDRESS_SPACE_MEMORY,
+                     &d->memcontainer);
+    pci_register_bar(&d->card, 1,
+                           PCI_BASE_ADDRESS_SPACE_MEMORY, &d->iocontainer);
     return 0;
 }
 
-static PCIDeviceInfo sm502_info = {
-    .qdev.name  = "sm502",
-    .qdev.size  = sizeof(SM502PciState),
-    .init       = pci_sm502_initfn,
-    .qdev.props   = (Property[]) {
-        DEFINE_PROP_PTR("serial", SM502PciState, serial),
-        DEFINE_PROP_END_OF_LIST(),
-    }
-};
 
 static Property sm502_properties[] = {
     DEFINE_PROP_PTR("serial", SM502PciState, serial),
     DEFINE_PROP_END_OF_LIST(),
 };
+
+static void sm502_write_config(PCIDevice *dev, uint32_t addr,
+                                      uint32_t val, int l)
+{
+    struct SM502PciState *d;
+    d = DO_UPCAST(struct SM502PciState, card, dev);
+
+    pci_default_write_config(dev, addr, val, l);
+
+    if (!range_covers_byte(addr, l, PCI_BASE_ADDRESS_0)) {
+        return;
+    }
+
+    d->usbdev->realized = 0;
+    qdev_prop_set_taddr(d->usbdev, "localmem_base", val);
+    d->usbdev->realized = 1;
+}
 
 static void sm502_class_init(ObjectClass *klass, void *data)
 {
@@ -103,7 +90,7 @@ static void sm502_class_init(ObjectClass *klass, void *data)
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
     k->init = sm502_initfn;
-//    k->config_write = sm502_write_config;
+    k->config_write = sm502_write_config;
     k->vendor_id = PCI_VENDOR_ID_SM502;
     k->device_id = PCI_DEVICE_ID_SM502;
     k->class_id = 0x3800;

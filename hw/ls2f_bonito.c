@@ -60,16 +60,16 @@ struct bonito_data {
 };
 
 struct bonito_data mybonitodata;
-static void bonito_update_irq();
+static void bonito_update_irq(void);
 CPUState *bonito_cpu_env;
 //------------------------------
-static uint32_t ddrcfg_dummy_readl(void *opaque, target_phys_addr_t addr)
+static uint32_t ddrcfg_dummy_readl(void *opaque, hwaddr addr, unsigned size)
 {
 	return -1;
 }
 
-static void ddrcfg_dummy_writel(void *opaque, target_phys_addr_t addr,
-		uint32_t val)
+static void ddrcfg_dummy_writel(void *opaque, hwaddr addr,
+		uint32_t val,unsigned size)
 {
 }
 
@@ -80,7 +80,7 @@ static const MemoryRegionOps ddrcfg_dummy_ops = {
 
 
 //-----------------
-static inline uint32_t bonito_pci_config_addr(target_phys_addr_t addr)
+static inline uint32_t bonito_pci_config_addr(hwaddr addr)
 {
 	int bus = 0, dev = -1, func = 0, reg = 0;
 	uint32_t tmp, tmp1 ,tmp2;
@@ -125,13 +125,13 @@ static inline uint32_t bonito_pci_config_addr(target_phys_addr_t addr)
 }
 
 
-static void pci_bonito_config_writeb (void *opaque, target_phys_addr_t addr,
+static void pci_bonito_config_writeb (void *opaque, hwaddr addr,
 		uint32_t val)
 {
 	pci_data_write(opaque, bonito_pci_config_addr (addr), val, 1);
 }
 
-static void pci_bonito_config_writew (void *opaque, target_phys_addr_t addr,
+static void pci_bonito_config_writew (void *opaque, hwaddr addr,
 		uint32_t val)
 {
 #ifdef TARGET_WORDS_BIGENDIAN
@@ -140,7 +140,7 @@ static void pci_bonito_config_writew (void *opaque, target_phys_addr_t addr,
 	pci_data_write(opaque, bonito_pci_config_addr (addr), val, 2);
 }
 
-static void pci_bonito_config_writel (void *opaque, target_phys_addr_t addr,
+static void pci_bonito_config_writel (void *opaque, hwaddr addr,
 		uint32_t val)
 {
 #ifdef TARGET_WORDS_BIGENDIAN
@@ -149,14 +149,14 @@ static void pci_bonito_config_writel (void *opaque, target_phys_addr_t addr,
 	pci_data_write(opaque, bonito_pci_config_addr (addr), val, 4);
 }
 
-static uint32_t pci_bonito_config_readb (void *opaque, target_phys_addr_t addr)
+static uint32_t pci_bonito_config_readb (void *opaque, hwaddr addr)
 {
 	uint32_t val;
 	val = pci_data_read(opaque, bonito_pci_config_addr (addr), 1);
 	return val;
 }
 
-static uint32_t pci_bonito_config_readw (void *opaque, target_phys_addr_t addr)
+static uint32_t pci_bonito_config_readw (void *opaque, hwaddr addr)
 {
 	uint32_t val;
 	val = pci_data_read(opaque, bonito_pci_config_addr (addr), 2);
@@ -166,7 +166,7 @@ static uint32_t pci_bonito_config_readw (void *opaque, target_phys_addr_t addr)
 	return val;
 }
 
-static uint32_t pci_bonito_config_readl (void *opaque, target_phys_addr_t addr)
+static uint32_t pci_bonito_config_readl (void *opaque, hwaddr addr)
 {
 	uint32_t val;
 	val = pci_data_read(opaque, bonito_pci_config_addr (addr), 4);
@@ -228,7 +228,7 @@ static void pci_bonito_set_irq(qemu_irq *pic, int irq_num, int level)
 
 MemoryRegion *ddrcfg_iomem;
 
-static uint32_t pci_bonito_local_readb (void *opaque, target_phys_addr_t addr)
+static uint32_t pci_bonito_local_readb (void *opaque, hwaddr addr)
 {
 	uint32_t val;
 	uint32_t relative_addr=addr&0xff;
@@ -246,7 +246,7 @@ static uint32_t pci_bonito_local_readb (void *opaque, target_phys_addr_t addr)
 	return (val>>(addr&3))&0xff;
 }
 
-static uint32_t pci_bonito_local_readw (void *opaque, target_phys_addr_t addr)
+static uint32_t pci_bonito_local_readw (void *opaque, hwaddr addr)
 {
 	uint32_t val;
 	uint32_t relative_addr=addr&0xff;
@@ -263,7 +263,7 @@ static uint32_t pci_bonito_local_readw (void *opaque, target_phys_addr_t addr)
 	return (val>>(addr&3))&0xffff;
 }
 
-static uint32_t pci_bonito_local_readl (void *opaque, target_phys_addr_t addr)
+static uint32_t pci_bonito_local_readl (void *opaque, hwaddr addr)
 {
 	uint32_t val;
 	uint32_t relative_addr=addr&0xff;
@@ -280,13 +280,13 @@ static uint32_t pci_bonito_local_readl (void *opaque, target_phys_addr_t addr)
 	return val;
 }
 
-static void pci_bonito_local_writeb (void *opaque, target_phys_addr_t addr,
+static void pci_bonito_local_writeb (void *opaque, hwaddr addr,
 		uint32_t val)
 {
 	//	uint32_t relative_addr=addr&0xff;
 }
 
-static void pci_bonito_local_writew (void *opaque, target_phys_addr_t addr,
+static void pci_bonito_local_writew (void *opaque, hwaddr addr,
 		uint32_t val)
 {
 	//	uint32_t relative_addr=addr&0xff;
@@ -440,7 +440,7 @@ static int gpio_serial(int val)
 
 
 
-static void pci_bonito_local_writel (void *opaque, target_phys_addr_t addr,
+static void pci_bonito_local_writel (void *opaque, hwaddr addr,
 		uint32_t val)
 {
 	uint32_t relative_addr=addr&0xff;

@@ -41,6 +41,7 @@
 #include "sysemu/blockdev.h"
 #include "exec/address-spaces.h"
 
+#define PHYS_TO_VIRT(x) ((x) | ~(target_ulong)0x7fffffff)
 #define MAX_IDE_BUS 2
 
 #define TARGET_REALPAGE_MASK (TARGET_PAGE_MASK<<2)
@@ -210,6 +211,27 @@ int irq_num=pin;
     return irq_num;
 }
 
+static int aui_boot_code[] ={
+0x04110002,/*   bal 1f*/
+0x00000000,/*   nop*/
+0x00000000,/*   .word 0*/
+0x8FFF0000,/*   lw $ra,($ra)*/
+0x3C08BFE0,/*   li $t0,0xbfe00118*/
+0x35080118,/* */
+0x24090200,/*   li $t1,((1 << (14 + 11)) | (0 << 8) | 14)>>16*/
+0xAD090000,/*   sw $t1, ($t0)*/
+0x3C08BFE8,/*   li $t0,0xbfe80000+(((1 << (14 + 11)) | (0 << 8) | 0)&0xffff)*/
+0x3C091500,/*   li $t1,0x15000000*/
+0xAD090014,/*   sw $t1,0x14($t0)*/
+0x24090007,/*   li $t1,  7*/
+0xAD090004,/*   sw $t1, 4($t0)*/
+0x03E00008,/*   jr $ra*/
+0x00000000,/*   nop*/
+0x00000000,/* */
+};
+
+PCIBus *pci_bonito_init(CPUState *env,qemu_irq *pic, int irq,int (*board_map_irq)(int bus,int dev,int func,int pin));
+static const int sector_len = 32 * 1024;
 static void mips_ls2f_sm502_init (QEMUMachineInitArgs *args)
 {
 	ram_addr_t ram_size = args->ram_size;
@@ -230,6 +252,8 @@ static void mips_ls2f_sm502_init (QEMUMachineInitArgs *args)
 	PCIBus *pci_bus;
 	DriveInfo *flash_dinfo=NULL;
 	int ddr2config = 0;
+	int be;
+	DriveInfo *dinfo;
 
 
     /* init CPUs */
@@ -304,32 +328,33 @@ static void mips_ls2f_sm502_init (QEMUMachineInitArgs *args)
             fprintf(stderr, "qemu: Error registering flash memory.\n");
 	}
     }
-    else {
-        bios = g_new(MemoryRegion, 1);
-        memory_region_init_ram(bios, "mips_r4k.bios", BIOS_SIZE);
-        vmstate_register_ram_global(bios);
-        memory_region_set_readonly(bios, true);
-        memory_region_add_subregion(get_system_memory(), 0x1fc00000, bios);
 
-	bios_size = sizeof(aui_boot_code);
-	rom_add_blob_fixed("bios",aui_boot_code,bios_size,0x1fc00000);
-    }
 
     if (filename) {
         g_free(filename);
     }
 
     if (kernel_filename) {
+	    int bios_size = 0x1000;
         loaderparams.ram_size = ram_size;
 		if(getenv("BD_PCI6254")) loaderparams.ram_size+=0x4000000;
         loaderparams.kernel_filename = kernel_filename;
         loaderparams.kernel_cmdline = kernel_cmdline;
         loaderparams.initrd_filename = initrd_filename;
         reset_info->vector = load_kernel();
+
+        bios = g_new(MemoryRegion, 1);
+        memory_region_init_ram(bios, "mips_r4k.bios", bios_size);
+        vmstate_register_ram_global(bios);
+        memory_region_set_readonly(bios, true);
+        memory_region_add_subregion(get_system_memory(), 0x1fc90000, bios);
+
+	bios_size = sizeof(aui_boot_code);
+	aui_boot_code[2] = reset_info->vector;
+	rom_add_blob_fixed("bios",aui_boot_code,sizeof(aui_boot_code),0x1fc90000);
+	reset_info->vector = 0xffffffffbfc90000LL;
     }
 
-
-    ISABus *isa_bus;
 
 {
 	int i;
@@ -338,7 +363,7 @@ static void mips_ls2f_sm502_init (QEMUMachineInitArgs *args)
     int index;
 	PCIBus *pci_bus;
 
-	pci_bus=pci_bonito_init(mycpu[0],&mycpu[0]->irq[6],4,board_map_irq_sm502);
+	pci_bus=pci_bonito_init(env,&env->irq[6],4,board_map_irq_sm502);
 
 
     /* Optional PCI video card */
@@ -364,36 +389,7 @@ static void mips_ls2f_sm502_init (QEMUMachineInitArgs *args)
 
     if (serial_hds[1])
         serial_mm_init(getenv("NB_SERIAL")?strtoul(getenv("NB_SERIAL"),0,0):0x1fc803f8, 0,mycpu[0]->irq[2],115200, serial_hds[1],1);
-    if(kernel_filename)
-    {
-    unsigned long bios_offset;
-    int bios_size = 0x1000;
-    bios_offset =  qemu_ram_alloc(bios_size);
-	cpu_register_physical_memory(0x1fc90000,
-				     bios_size, bios_offset | IO_MEM_ROM);
-int aui_boot_code[] ={
-0x04110002,/*   bal 1f*/
-0x00000000,/*   nop*/
-0x00000000,/*   .word 0*/
-0x8FFF0000,/*   lw $ra,($ra)*/
-0x3C08BFE0,/*   li $t0,0xbfe00118*/
-0x35080118,/* */
-0x24090200,/*   li $t1,((1 << (14 + 11)) | (0 << 8) | 14)>>16*/
-0xAD090000,/*   sw $t1, ($t0)*/
-0x3C08BFE8,/*   li $t0,0xbfe80000+(((1 << (14 + 11)) | (0 << 8) | 0)&0xffff)*/
-0x3C091500,/*   li $t1,0x15000000*/
-0xAD090014,/*   sw $t1,0x14($t0)*/
-0x24090007,/*   li $t1,  7*/
-0xAD090004,/*   sw $t1, 4($t0)*/
-0x03E00008,/*   jr $ra*/
-0x00000000,/*   nop*/
-0x00000000,/* */
-};
-	aui_boot_code[2] = reset_info->vector;
-	rom_add_blob_fixed("bios",aui_boot_code,sizeof(aui_boot_code),0x1fc90000);
-	reset_info->vector = 0xffffffffbfc90000LL;
-	
-    }
+
 }
 
 }
