@@ -50,8 +50,6 @@ static const int ide_iobase[2] = { 0x1f0, 0x170 };
 static const int ide_iobase2[2] = { 0x3f6, 0x376 };
 static const int ide_irq[2] = { 14, 15 };
 
-static ISADevice *pit; /* PIT i8254 */
-
 /* i8254 PIT is attached to the IRQ0 at PIC i8259 */
 
 static struct _loaderparams {
@@ -230,7 +228,8 @@ static int aui_boot_code[] ={
 0x00000000,/* */
 };
 
-PCIBus *pci_bonito_init(CPUState *env,qemu_irq *pic, int irq,int (*board_map_irq)(int bus,int dev,int func,int pin));
+PCIBus *pci_bonito_init(CPUMIPSState *env,qemu_irq *pic, int irq,int (*board_map_irq)(int bus,int dev,int func,int pin));
+int pci_sm502_init(PCIBus *bus, int devfn, CharDriverState *chr);
 static const int sector_len = 32 * 1024;
 static void mips_ls2f_sm502_init (QEMUMachineInitArgs *args)
 {
@@ -248,10 +247,6 @@ static void mips_ls2f_sm502_init (QEMUMachineInitArgs *args)
 	MIPSCPU *cpu;
 	CPUMIPSState *env;
 	ResetData *reset_info;
-	qemu_irq *ls1a_irq,*ls1a_irq1;
-	PCIBus *pci_bus;
-	DriveInfo *flash_dinfo=NULL;
-	int ddr2config = 0;
 	int be;
 	DriveInfo *dinfo;
 
@@ -358,28 +353,21 @@ static void mips_ls2f_sm502_init (QEMUMachineInitArgs *args)
 
 {
 	int i;
-    qemu_irq *i8259;
-    qemu_irq *gs2f_irq;
-    int index;
 	PCIBus *pci_bus;
 
-	pci_bus=pci_bonito_init(env,&env->irq[6],4,board_map_irq_sm502);
+	pci_bus=pci_bonito_init(env,(qemu_irq *)&env->irq[6],4,board_map_irq_sm502);
 
 
     /* Optional PCI video card */
-	for(i=0;i<2;i++)
+	for(i=0;i<nb_nics;i++)
 	{
-	char devaddr[10];
+		char devaddr[10];
 
-    if (nd_table[i].vlan) {
-			if(!nd_table[i].model)
-			nd_table[i].model="rtl8139";
-			sprintf(devaddr,"%x",16+i);
-            pci_nic_init(&nd_table[i],nd_table[i].model,devaddr);
-    }
+		sprintf(devaddr,"%x",16+i);
+		pci_nic_init(&nd_table[i],nd_table[i].model?:"rtl8139",devaddr);
 	}
 
-	usb_ohci_init_pci(pci_bus,11<<3);
+        pci_create_simple(pci_bus, -1, "pci-ohci");
 
     if (serial_hds[0])
      pci_sm502_init(pci_bus,14<<3, serial_hds[0]);
@@ -388,7 +376,7 @@ static void mips_ls2f_sm502_init (QEMUMachineInitArgs *args)
 	
 
     if (serial_hds[1])
-        serial_mm_init(getenv("NB_SERIAL")?strtoul(getenv("NB_SERIAL"),0,0):0x1fc803f8, 0,mycpu[0]->irq[2],115200, serial_hds[1],1);
+        serial_mm_init(address_space_mem, getenv("NB_SERIAL")?strtoul(getenv("NB_SERIAL"),0,0):0x1fc803f8, 0,env->irq[2],115200, serial_hds[1],1);
 
 }
 
@@ -397,7 +385,7 @@ static void mips_ls2f_sm502_init (QEMUMachineInitArgs *args)
 QEMUMachine mips_gs2f_machine = {
     .name = "gs2f",
     .desc = "mips gs2f platform",
-    .init = mips_gs2f_init,
+    .init = mips_ls2f_sm502_init,
 };
 
 static void mips_machine_init(void)

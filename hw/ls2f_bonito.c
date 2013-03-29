@@ -14,7 +14,7 @@
 #include "sysemu/sysemu.h"
 #include "exec/address-spaces.h"
 
-#define gdb_printf //printf
+#define gdb_printf(...) //printf
 
 struct bonito_data {
 	int	irqnr;
@@ -55,21 +55,21 @@ struct bonito_data {
 		uint32_t intenclr;		/* 34 */
 		uint32_t inten;		/* 38 */
 		uint32_t intisr;		/* 3c */
-		uint32_t unused[(0x100-0x40)/4];		/* 40 */
+		uint32_t reg40[(0x100-0x40)/4];		/* 40 */
 	}bonlocal;
 };
 
 struct bonito_data mybonitodata;
 static void bonito_update_irq(void);
-CPUState *bonito_cpu_env;
+CPUMIPSState *bonito_cpu_env;
 //------------------------------
-static uint32_t ddrcfg_dummy_readl(void *opaque, hwaddr addr, unsigned size)
+static uint64_t ddrcfg_dummy_readl(void *opaque, hwaddr addr, unsigned size)
 {
 	return -1;
 }
 
 static void ddrcfg_dummy_writel(void *opaque, hwaddr addr,
-		uint32_t val,unsigned size)
+		uint64_t val,unsigned size)
 {
 }
 
@@ -204,7 +204,7 @@ static int pci_bonito_map_irq(PCIDevice *d, int irq_num)
 	return local_board_map_irq(0,dev,func,irq_num);
 }
 
-static void bonito_update_irq()
+static void bonito_update_irq(void)
 {
 	struct bonito_data *d=&mybonitodata;
 	if(d->bonlocal.intisr&d->bonlocal.inten)
@@ -215,7 +215,7 @@ static void bonito_update_irq()
 }
 
 
-static void pci_bonito_set_irq(qemu_irq *pic, int irq_num, int level)
+static void pci_bonito_set_irq(void *opaque, int irq_num, int level)
 {
 	struct bonito_data *d=&mybonitodata;
 	if(level)
@@ -306,21 +306,13 @@ static int gpio_serial(int val)
 {
 	static int STAT = WAITSTART;
 	static int clkp=0,datap=0;
-	static int error = 0;
 	static int cnt = 8;
-	static int tick = 0;
-	static unsigned char crev = 0,crevp = 0;
 	static unsigned char clk = 0;              //bit0 for clk
 	static unsigned char data = 0;	//bit1 for data
 	static unsigned char cget = 0;			//reorderd data
-	static int chkcnt = 1;	
-	static unsigned char cput = 0;             //send data init
-	static unsigned char sclk = 0;
-	static unsigned char sdata = 0; 
-	static int scnt = 0;
-	static int n = 0,sflg = 0;
-	static char chin;
-	static int ch;
+	static int sflg = 0;
+	//static char chin;
+	//static int ch;
 
 	{	
 
@@ -337,7 +329,6 @@ static int gpio_serial(int val)
 					{
 						STAT = WAITSTART;
 						sflg = 0;
-						tick = 0;
 						cnt  = 8;
 					}
 				}
@@ -418,14 +409,13 @@ static int gpio_serial(int val)
 
 			case SENDDATA:
 				sflg = 0;
-				tick = 0;
 				//palputdata(chin);
 				//outb(0,BASEADDR);
 				STAT = WAITSTART;
 				break;
 
 			case ERROR:
-				error = 1;
+				printf("error\n");
 				break;
 
 			default:
@@ -464,18 +454,18 @@ static void pci_bonito_local_writel (void *opaque, hwaddr addr,
 			break;
 		case 0x80:
 			//ddr config register
-			printf("0x180 val=%x\n",val);
-			if(val&0x2 && !(reg0420[0]&2))
+			
+			if(val&0x100 && !(d->bonlocal.reg40[(0x80-0x40)/4]&0x100))
 			{
 				memory_region_del_subregion(get_system_memory(), ddrcfg_iomem);
 			}
 
-			if(!(val&0x2) && (reg0420[0]&0x2))
+			if(!(val&0x100) && (d->bonlocal.reg40[(0x80-0x40)/4]&0x100))
 			{
 				memory_region_add_subregion_overlap(get_system_memory(), 0x0ffffe00&TARGET_PAGE_MASK, ddrcfg_iomem, 1);
 			}
 
-			reg0420[0] = val;
+			d->bonlocal.reg40[(0x80-0x40)/4] = val;
 			break;
 		case 0x84:
 			break;
@@ -504,10 +494,10 @@ static const MemoryRegionOps bonito_local_ops = {
 };
 
 
-PCIBus *pci_bonito_init(CPUState *env,qemu_irq *pic, int irq,int (*board_map_irq)(int bus,int dev,int func,int pin))
+PCIBus *pci_bonito_init(CPUMIPSState *env,qemu_irq *pic, int irq,int (*board_map_irq)(int bus,int dev,int func,int pin));
+PCIBus *pci_bonito_init(CPUMIPSState *env,qemu_irq *pic, int irq,int (*board_map_irq)(int bus,int dev,int func,int pin))
 {
 	PCIBus *s;
-	int dev_bonpci_access,dev_bonlocal_access;
 
 	bonito_cpu_env = env;
 	pci_bonito_irq_offset = irq;
@@ -519,19 +509,19 @@ PCIBus *pci_bonito_init(CPUState *env,qemu_irq *pic, int irq,int (*board_map_irq
 
 	{
 		MemoryRegion *iomem = g_new(MemoryRegion, 1);
-		memory_region_init_io(iomem, &bonito_pciconf_ops, NULL, "ls2f_pci_conf", 512);
+		memory_region_init_io(iomem, &bonito_pciconf_ops, s, "ls2f_pci_conf", 512);
 		memory_region_add_subregion(get_system_memory(), 0x1fe80000, iomem);
 	}
 
 	{
 		MemoryRegion *iomem = g_new(MemoryRegion, 1);
-		memory_region_init_io(iomem, &bonito_local_ops, NULL, "ls1a_pci_conf", 0x100);
+		memory_region_init_io(iomem, &bonito_local_ops, s, "ls1a_pci_conf", 0x100);
 		memory_region_add_subregion(get_system_memory(), 0x1fe00100, iomem);
 	}
 
 	{
 		ddrcfg_iomem = g_new(MemoryRegion, 1);
-		memory_region_init_io(iomem, &ddrcfg_dummy_ops, NULL, "ls1a_pci_conf", TARGET_PAGE_SIZE);
+		memory_region_init_io(ddrcfg_iomem, &ddrcfg_dummy_ops, NULL, "ls1a_pci_conf", TARGET_PAGE_SIZE);
 	}
 
 	mybonitodata.bonlocal.intisr=0;
