@@ -68,7 +68,9 @@ const VMStateDescription vmstate_usb_device = {
 
 void usb_bus_new(USBBus *bus, USBBusOps *ops, DeviceState *host)
 {
-    qbus_create_inplace(&bus->qbus, TYPE_USB_BUS, host, NULL);
+    char name[64];
+    snprintf(name, 64, TYPE_USB_BUS ".%d", next_usb_bus);
+    qbus_create_inplace(&bus->qbus, TYPE_USB_BUS, host, name);
     bus->ops = ops;
     bus->busnr = next_usb_bus++;
     bus->qbus.allow_hotplug = 1; /* Yes, we can */
