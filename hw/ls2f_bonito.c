@@ -524,6 +524,12 @@ PCIBus *pci_bonito_init(CPUMIPSState *env,qemu_irq *pic, int irq,int (*board_map
 		memory_region_init_io(ddrcfg_iomem, &ddrcfg_dummy_ops, NULL, "ls1a_pci_conf", TARGET_PAGE_SIZE);
 	}
 
+	{
+	MemoryRegion *ram = g_new(MemoryRegion, 1);
+	memory_region_init_ram(ram, "ls2f_addrconf", 0x4000);
+	memory_region_add_subregion(get_system_memory(), 0x3ff00000, ram);
+	}
+
 	mybonitodata.bonlocal.intisr=0;
 	mybonitodata.bonlocal.inten=0xf<<11;
 
