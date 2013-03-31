@@ -367,12 +367,13 @@ static void mips_ls2f_sm502_init (QEMUMachineInitArgs *args)
 		pci_nic_init(&nd_table[i],nd_table[i].model?:"rtl8139",devaddr);
 	}
 
-        pci_create_simple(pci_bus, -1, "pci-ohci");
 
     if (serial_hds[0])
      pci_sm502_init(pci_bus,14<<3, serial_hds[0]);
     else 
      pci_sm502_init(pci_bus,14<<3, 0);
+
+     pci_create_simple(pci_bus, -1, "pci-ohci");
 	
 
     if (serial_hds[1])
