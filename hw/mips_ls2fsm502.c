@@ -384,7 +384,7 @@ static void mips_ls2f_sm502_init (QEMUMachineInitArgs *args)
 }
 
 QEMUMachine mips_gs2f_machine = {
-    .name = "gs2f",
+    .name = "ls2f_sm502",
     .desc = "mips gs2f platform",
     .init = mips_ls2f_sm502_init,
 };
