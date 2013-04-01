@@ -15,8 +15,6 @@
 #define PCI_VENDOR_ID_LS1A 0x126f
 #define PCI_DEVICE_ID_LS1A 0x501
 
-void *ls1a_new(uint32_t local_mem_bytes, qemu_irq irq,
-                CharDriverState *chr, MemoryRegion *memcontainer, MemoryRegion *iocontainer, DeviceState **pusbdev);
 
 
 typedef struct LS1APciState {
@@ -46,13 +44,16 @@ typedef struct LS1APciState {
 } LS1APciState;
 
 
-int pci_ls1a_init(PCIBus *bus, int devfn, CharDriverState *chr);
-int pci_ls1a_init(PCIBus *bus, int devfn, CharDriverState *chr)
+int pci_ls1a_init(PCIBus *bus, int devfn, CharDriverState **serial, DriveInfo *hd, NICInfo *nd, DriveInfo *flash);
+int pci_ls1a_init(PCIBus *bus, int devfn, CharDriverState **serial, DriveInfo *hd, NICInfo *nd, DriveInfo *flash)
 {
     PCIDevice *dev;
 
     dev = pci_create(bus, devfn, "ls1a");
-    qdev_prop_set_ptr(&dev->qdev, "serial", chr);
+    qdev_prop_set_ptr(&dev->qdev, "serial", serial);
+    qdev_prop_set_ptr(&dev->qdev, "hd", hd);
+    qdev_prop_set_ptr(&dev->qdev, "nd", nd);
+    qdev_prop_set_ptr(&dev->qdev, "flash", flash);
     qdev_init_nofail(&dev->qdev);
 
     return 0;
@@ -120,17 +121,19 @@ static int ls1a_initfn(PCIDevice *dev)
     ls1a_intctl_init(&d->iomem_axi, 0x00d01070, d->pin1_irqs[0]);
     ls1a_intctl_init(&d->iomem_axi, 0x00d01088, d->pin1_irqs[1]);
 
+    printf("serial_hds[0]=%p\n", d->serial_hds[0]);
+
     if (d->serial_hds[0])
-	    serial_mm_init(&d->iomem_axi, 0x00e40000, 0,ls1a_irq[2],115200,d->serial_hds[0], DEVICE_NATIVE_ENDIAN);
+	    serial_mm_init(&d->iomem_axi, 0x00e40000, 2,ls1a_irq[2],115200,d->serial_hds[0], DEVICE_NATIVE_ENDIAN);
 
     if (d->serial_hds[1])
-	    serial_mm_init(&d->iomem_axi, 0x00e44000, 0,ls1a_irq[3],115200,d->serial_hds[1], DEVICE_NATIVE_ENDIAN);
+	    serial_mm_init(&d->iomem_axi, 0x00e44000, 2,ls1a_irq[3],115200,d->serial_hds[1], DEVICE_NATIVE_ENDIAN);
 
     if (d->serial_hds[2])
-	    serial_mm_init(&d->iomem_axi, 0x00e48000, 0,ls1a_irq[4],115200,d->serial_hds[2], DEVICE_NATIVE_ENDIAN);
+	    serial_mm_init(&d->iomem_axi, 0x00e48000, 2,ls1a_irq[4],115200,d->serial_hds[2], DEVICE_NATIVE_ENDIAN);
 
     if (d->serial_hds[3])
-	    serial_mm_init(&d->iomem_axi, 0x00e4c000, 0,ls1a_irq[5],115200,d->serial_hds[3], DEVICE_NATIVE_ENDIAN);
+	    serial_mm_init(&d->iomem_axi, 0x00e4c000, 2,ls1a_irq[5],115200,d->serial_hds[3], DEVICE_NATIVE_ENDIAN);
 
     {
 	    MemoryRegion *i8042 = g_new(MemoryRegion, 1);
@@ -143,8 +146,6 @@ static int ls1a_initfn(PCIDevice *dev)
 		SysBusDevice *sysbusdev;
 		hwaddr devaddr =  0x00e00000;
 		dev = qdev_create(NULL, "exynos4210-ehci-usb");
-		qdev_prop_set_uint32(dev, "num-ports", 4);
-		qdev_prop_set_taddr(dev, "dma-offset", 0);
 		qdev_init_nofail(dev);
 
 		sysbusdev =  SYS_BUS_DEVICE(dev);
@@ -342,14 +343,14 @@ static int ls1a_initfn(PCIDevice *dev)
 
 
     pci_register_bar(&d->card, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->iomem_dc);
-    pci_register_bar(&d->card, 1, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->iomem_axi);
-    pci_register_bar(&d->card, 2, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->iomem_ddr);
+    pci_register_bar(&d->card, 2, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->iomem_axi);
+    pci_register_bar(&d->card, 4, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->iomem_ddr);
     return 0;
 }
 
 
 static Property ls1a_properties[] = {
-    DEFINE_PROP_PTR("serial_hds", LS1APciState, serial_ptr),
+    DEFINE_PROP_PTR("serial", LS1APciState, serial_ptr),
     DEFINE_PROP_PTR("hd", LS1APciState, hd_ptr),
     DEFINE_PROP_PTR("nd", LS1APciState, nd_ptr),
     DEFINE_PROP_PTR("flash", LS1APciState, flash_ptr),
