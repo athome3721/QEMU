@@ -265,7 +265,7 @@ static void main_cpu_reset(void *opaque)
 }
 
 
-void *ls1a_intctl_init(hwaddr addr,qemu_irq parent_irq);
+void *ls1a_intctl_init(MemoryRegion *mr, hwaddr addr, qemu_irq parent_irq);
 
 static int board_map_irq(int bus,int dev,int func,int pin)
 {
@@ -378,10 +378,10 @@ static void mips_ls1a_init (QEMUMachineInitArgs *args)
 	/* Register 64 KB of IO space at 0x1f000000 */
 	isa_mmio_init(0x1c000000, 0x00010000);
 	isa_mem_base = 0x10000000;
-	ls1a_irq =ls1a_intctl_init(0x1Fd01040,env->irq[2]);
-	ls1a_irq1=ls1a_intctl_init(0x1Fd01058,env->irq[3]);
-	ls1a_intctl_init(0x1Fd01070,env->irq[4]);
-	ls1a_intctl_init(0x1Fd01088,env->irq[5]);
+	ls1a_irq =ls1a_intctl_init(get_system_memory(), 0x1Fd01040, env->irq[2]);
+	ls1a_irq1=ls1a_intctl_init(get_system_memory(), 0x1Fd01058, env->irq[3]);
+	ls1a_intctl_init(get_system_memory(), 0x1Fd01070, env->irq[4]);
+	ls1a_intctl_init(get_system_memory(), 0x1Fd01088, env->irq[5]);
 
 
 	if (serial_hds[0])
@@ -617,205 +617,7 @@ machine_init(mips_machine_init);
 #define MAX_CPUS 1
 #define MAX_PILS 16
 
-typedef struct GS232_INTCTLState {
-	uint32_t baseaddr;
-	uint32_t intreg_edge;
-	uint32_t intreg_steer;
-	uint32_t intreg_pol;
-	//set
-	//clr
-	uint32_t intreg_en;
-	uint32_t intreg_pending;
-#ifdef DEBUG_IRQ_COUNT
-	uint64_t irq_count[32];
-#endif
-	qemu_irq cpu_irq;
-	uint32_t pil_out;
-} GS232_INTCTLState;
-
-#define INTCTL_SIZE 0x18
-#define INTCTLM_MAXADDR 0x13
-#define INTCTLM_SIZE (INTCTLM_MAXADDR + 1)
-#define INTCTLM_MASK 0x1f
-#define MASTER_IRQ_MASK ~0x0fa2007f
-#define MASTER_DISABLE 0x80000000
-#define CPU_SOFTIRQ_MASK 0xfffe0000
-#define CPU_HARDIRQ_MASK 0x0000fffe
-#define CPU_IRQ_INT15_IN 0x0004000
-#define CPU_IRQ_INT15_MASK 0x80000000
-
-static void ls1a_check_interrupts(void *opaque);
-
-// per-cpu interrupt controller
-static uint64_t ls1a_intctl_mem_readl(void *opaque, hwaddr addr, unsigned size)
-{
-	GS232_INTCTLState *s = opaque;
-	uint32_t saddr, ret;
-
-	saddr = addr >> 2;
-	switch (saddr) {
-		case 0: //isr
-			ret = s->intreg_pending & s->intreg_en;
-			break;
-		case 1:
-			ret= s->intreg_en;
-			break;
-		case 2: //set
-			ret=0;
-			break;
-		case 3: //clr
-			ret=0;
-			break;
-		case 4:
-			ret= s->intreg_pol;
-			break;
-		case 5:
-			ret= s->intreg_edge;
-			break;
-		default:
-			ret = 0;
-			break;
-	}
-	DPRINTF("read cpu %d reg 0x" TARGET_FMT_plx " = %x\n", cpu, addr, ret);
-
-	return ret;
-}
-
-static void ls1a_intctl_mem_writel(void *opaque, hwaddr addr, uint64_t val, unsigned size)
-{
-	GS232_INTCTLState *s = opaque;
-	uint32_t saddr;
-
-	saddr = addr >> 2;
-	//printf("write reg 0x" TARGET_FMT_plx " %x= %x\n", addr, saddr, (unsigned int)val);
-	switch (saddr) {
-		case 0: //isr
-			s->intreg_pending=val;
-			ls1a_check_interrupts(s);
-			break;
-		case 1:
-			s->intreg_en=val;
-			ls1a_check_interrupts(s);
-			break;
-		case 2: //set
-			s->intreg_en |= val;
-			ls1a_check_interrupts(s);
-			break;
-		case 3: //clr
-			s->intreg_pending &= ~(val & s->intreg_edge);
-			ls1a_check_interrupts(s);
-			break;
-		case 4:
-			s->intreg_pol=val;
-			ls1a_check_interrupts(s);
-			break;
-		case 5:
-			s->intreg_edge=val;
-			ls1a_check_interrupts(s);
-			break;
-		default:
-			break;
-	}
-}
-
-static const MemoryRegionOps ls1a_intctl_mem_ops = {
-    .read = ls1a_intctl_mem_readl,
-    .write = ls1a_intctl_mem_writel,
-    .endianness = DEVICE_NATIVE_ENDIAN,
-};
-
-
-static void ls1a_check_interrupts(void *opaque)
-{
-	GS232_INTCTLState *s = opaque;
-	uint32_t pil_pending;
-
-
-	pil_pending = s->intreg_pending & s->intreg_en;
-
-	if (pil_pending ) {
-		qemu_irq_raise(s->cpu_irq);
-	} else {
-		if (s->pil_out)
-			qemu_irq_lower(s->cpu_irq);
-	}
-	s->pil_out = pil_pending;
-	DPRINTF("pending %x \n", pil_pending);
-}
-
-/*
- * "irq" here is the bit number in the system interrupt register to
- * separate serial and keyboard interrupts sharing a level.
- */
-static void ls1a_set_irq(void *opaque, int irq, int level)
-{
-	GS232_INTCTLState *s = opaque;
-	uint32_t mask = 1 << irq;
-
-	DPRINTF("Set cpu %d irq %d level %d\n", s->target_cpu, irq,
-			level);
-	if (level) {
-		s->intreg_pending |= mask;
-	} else {
-		s->intreg_pending &= ~mask | s->intreg_edge;
-	}
-	ls1a_check_interrupts(s);
-}
-
-
-static void ls1a_intctl_save(QEMUFile *f, void *opaque)
-{
-	GS232_INTCTLState *s = opaque;
-
-	qemu_put_be32s(f, &s->intreg_pending);
-}
-
-static int ls1a_intctl_load(QEMUFile *f, void *opaque, int version_id)
-{
-	GS232_INTCTLState *s = opaque;
-
-	if (version_id != 1)
-		return -EINVAL;
-
-	qemu_get_be32s(f, &s->intreg_pending);
-	ls1a_check_interrupts(s);
-	return 0;
-}
-
-static void ls1a_intctl_reset(void *opaque)
-{
-	GS232_INTCTLState *s = opaque;
-
-	s->intreg_pending = 0;
-	ls1a_check_interrupts(s);
-}
-
-
-void *ls1a_intctl_init(hwaddr addr,qemu_irq parent_irq)
-{
-	qemu_irq *irqs;
-	GS232_INTCTLState *s;
-
-	s = g_malloc0(sizeof(GS232_INTCTLState));
-	if (!s)
-		return NULL;
-
-	{
-                MemoryRegion *iomem = g_new(MemoryRegion, 1);
-                memory_region_init_io(iomem, &ls1a_intctl_mem_ops, s, "ls1a_int", INTCTL_SIZE);
-                memory_region_add_subregion(get_system_memory(), addr, iomem);
-	}
-
-	s->cpu_irq = parent_irq;
-	s->baseaddr=addr;
-
-	register_savevm(NULL, "ls1a_intctl", addr, 1, ls1a_intctl_save, ls1a_intctl_load, s);
-	qemu_register_reset(ls1a_intctl_reset, s);
-	irqs = qemu_allocate_irqs(ls1a_set_irq, s, 32);
-
-	ls1a_intctl_reset(s);
-	return irqs;
-}
+#include "ls1a_int.c"
 //-------------------------
 // pci bridge
 //-----------------
