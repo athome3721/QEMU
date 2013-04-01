@@ -13,6 +13,7 @@
 #include "pci/pci_host.h"
 #include "sysemu/sysemu.h"
 #include "exec/address-spaces.h"
+#include "qemu/range.h"
 
 #define gdb_printf(...) //printf
 
@@ -22,7 +23,7 @@ struct bonito_regs {
 		uint32_t iodevcfg;		/* 8 */
 		uint32_t sdcfg;		/* c */
 		uint32_t pcimap;		/* 10 */
-		uint32_t pcimembasecfg;	/* 14 */
+		uint32_t PCIX_Bridge_Cfg;	/* 14 */
 		uint32_t pcimap_cfg;	/* 18 */
 		uint32_t gpiodata;		/* 1c */
 		uint32_t gpioie;		/* 20 */
@@ -56,14 +57,28 @@ struct BonitoState {
     PCIBonitoState *pci_dev;
     struct bonito_regs regs;
     CPUMIPSState *cpu_env;
+    MemoryRegion iomem_pcimem;
+    MemoryRegion iomem_pcimap[4];
     int irq_offset;
+    union{
+    uint8_t addrcfg_mem[0x100];
+    struct {
+    uint64_t cpubase[4]; 
+    uint64_t cpumask[4]; 
+    uint64_t cpumap[4]; 
+    uint64_t pcidmabase[4]; 
+    uint64_t pcidmamask[4]; 
+    uint64_t pcidmamap[4]; 
+    } addrcfg_reg;
+    };
+    DMAContext dma;
 };
 
 
 static void bonito_update_irq(BonitoState *pcihost);
 
 
-//------------------------------
+/* dummy ddr config ops */
 static uint64_t ddrcfg_dummy_readl(void *opaque, hwaddr addr, unsigned size)
 {
 	return -1;
@@ -79,6 +94,55 @@ static const MemoryRegionOps ddrcfg_dummy_ops = {
 	.write = ddrcfg_dummy_writel,
 };
 
+/*address space config ops*/
+static uint64_t addrcfg_readl(void *opaque, hwaddr addr, unsigned size)
+{
+    	BonitoState *pcihost = opaque;
+        switch(size)
+	{	
+	case 1:
+	return *(uint8_t *)(pcihost->addrcfg_mem+addr);
+	case 2:
+	return *(uint16_t *)(pcihost->addrcfg_mem+addr);
+	case 4:
+	return *(uint32_t *)(pcihost->addrcfg_mem+addr);
+	default:
+	return *(uint64_t *)(pcihost->addrcfg_mem+addr);
+	}
+	
+}
+
+static void addrcfg_writel(void *opaque, hwaddr addr,
+		uint64_t val,unsigned size)
+{
+    	BonitoState *pcihost = opaque;
+        switch(size)
+	{	
+	case 1:
+	*(uint8_t *)(pcihost->addrcfg_mem+addr) = val;
+	break;
+	case 2:
+	 *(uint16_t *)(pcihost->addrcfg_mem+addr) = val;
+	break;
+	case 4:
+	*(uint32_t *)(pcihost->addrcfg_mem+addr) = val;
+	break;
+	case 8:
+	*(uint64_t *)(pcihost->addrcfg_mem+addr) = val;
+	break;
+	}
+
+    if (range_covers_byte(0, 8, addr) || range_covers_byte(0x20, 8, addr) || range_covers_byte(0x40, 8, addr)) {
+        return;
+    }
+}
+
+static const MemoryRegionOps addrcfg_ops = {
+	.read = addrcfg_readl,
+	.write = addrcfg_writel,
+};
+
+//-------------------------------------
 static void bonito_pciconf_writel(void *opaque, hwaddr addr,
                                   uint64_t val, unsigned size)
 {
@@ -348,6 +412,27 @@ static int gpio_serial(int val)
 	return 0;
 }
 
+static void update_pcimap(BonitoState *pcihost)
+{
+	struct bonito_regs *d=&pcihost->regs;
+	uint32_t pcimap = d->pcimap;
+
+	if(pcihost->iomem_pcimap[0].parent)
+	memory_region_del_subregion(get_system_memory(), &pcihost->iomem_pcimap[0]);
+	if(pcihost->iomem_pcimap[1].parent)
+	memory_region_del_subregion(get_system_memory(), &pcihost->iomem_pcimap[1]);
+	if(pcihost->iomem_pcimap[2].parent)
+	memory_region_del_subregion(get_system_memory(), &pcihost->iomem_pcimap[2]);
+
+        memory_region_init_alias(&pcihost->iomem_pcimap[0], "pcimem0", &pcihost->iomem_pcimem, (pcimap&0x3f)<<26, 0x4000000);
+        memory_region_init_alias(&pcihost->iomem_pcimap[1], "pcimem1", &pcihost->iomem_pcimem, ((pcimap>>6)&0x3f)<<26, 0x4000000);
+        memory_region_init_alias(&pcihost->iomem_pcimap[1], "pcimem2", &pcihost->iomem_pcimem, ((pcimap>>6)&0x3f)<<26, 0x4000000);
+
+	memory_region_add_subregion(get_system_memory(), 0x10000000, &pcihost->iomem_pcimap[0]);
+	memory_region_add_subregion(get_system_memory(), 0x14000000, &pcihost->iomem_pcimap[1]);
+	memory_region_add_subregion(get_system_memory(), 0x18000000, &pcihost->iomem_pcimap[2]);
+
+}
 
 
 static void pci_bonito_local_writel (void *opaque, hwaddr addr,
@@ -358,6 +443,10 @@ static void pci_bonito_local_writel (void *opaque, hwaddr addr,
 	struct bonito_regs *d=&pcihost->regs;
 
 	switch (relative_addr) {
+		case 0x10:
+		 d->pcimap = val;
+		update_pcimap(pcihost);
+		break;
 		case 0x1c:
 			d->gpiodata= (d->gpiodata&0xffff0000)|(val&0xffff);
 			gpio_serial(val);
@@ -528,9 +617,9 @@ static int bonito_initfn(PCIDevice *dev)
 	}
 
 	{
-	MemoryRegion *ram = g_new(MemoryRegion, 1);
-	memory_region_init_ram(ram, "ls2f_addrconf", 0x4000);
-	memory_region_add_subregion(get_system_memory(), 0x3ff00000, ram);
+	MemoryRegion *addrconf_iomem = g_new(MemoryRegion, 1);
+	memory_region_init_io(addrconf_iomem, &addrcfg_ops, s->pcihost, "ls2f_addrconf", 0x100);
+	memory_region_add_subregion(get_system_memory(), 0x3ff00000, addrconf_iomem);
 	}
 
 	s->pcihost->regs.intisr=0;
@@ -577,16 +666,82 @@ static const TypeInfo bonito_info = {
     .class_init    = bonito_class_init,
 };
 
+static int pcidma_translate(DMAContext *dma,
+                               dma_addr_t addr,
+                               hwaddr *paddr,
+                               hwaddr *len,
+                               DMADirection dir)
+{
+    BonitoState *pcihost = container_of (dma, BonitoState, dma);
+    int i;
+    hwaddr offset;
+    for(i=0;i<4;i++)
+    {
+	    if((addr & pcihost->addrcfg_reg.pcidmamask[i]) == pcihost->addrcfg_reg.pcidmabase[i])
+		    break;
+    }
+    if(i == 4) return -1;
+
+     offset = addr & ~pcihost->addrcfg_reg.pcidmamask[i];
+
+	*paddr = (pcihost->addrcfg_reg.pcidmamap[i]&~3ULL)|offset;
+	*len = (~pcihost->addrcfg_reg.pcidmamask[i] - offset);
+
+    return 0;
+}
+
+static DMAContext *pci_dma_context_fn(PCIBus *bus, void *opaque,
+                                            int devfn)
+{
+    BonitoState *pcihost = opaque;
+
+    return &pcihost->dma;
+}
+
 static int bonito_pcihost_initfn(SysBusDevice *dev)
 {
     BonitoState *pcihost;
     PCIHostState *phb = PCI_HOST_BRIDGE(dev);
     pcihost = BONITO_PCI_HOST_BRIDGE(dev);
 
+    memory_region_init(&pcihost->iomem_pcimem, "pcimem", 0x100000000);
+    pcihost->regs.pcimap = 0;
+    update_pcimap(pcihost);
+
+    memory_region_init_alias(&pcihost->iomem_pcimap[3], "pcimem3", &pcihost->iomem_pcimem, 0x40000000, 0x40000000);
+    memory_region_add_subregion(get_system_memory(), 0x40000000, &pcihost->iomem_pcimap[3]);
+    pcihost->addrcfg_reg.cpubase[0] = 0;
+    pcihost->addrcfg_reg.cpubase[1] = 0x10000000ULL;
+    pcihost->addrcfg_reg.cpubase[2] = 0xfffffffffff00000ULL;
+    pcihost->addrcfg_reg.cpubase[3] = 0xfffffffffff00000ULL;
+    pcihost->addrcfg_reg.cpumask[0] = 0xfffffffff0000000ULL;
+    pcihost->addrcfg_reg.cpumask[1] = 0xfffffffff0000000ULL;
+    pcihost->addrcfg_reg.cpumask[2] = 0xfffffffffff00000ULL;
+    pcihost->addrcfg_reg.cpumask[3] = 0xfffffffffff00000ULL;
+    pcihost->addrcfg_reg.cpumap[0] = 0;
+    pcihost->addrcfg_reg.cpumap[1] = 0x10000001ULL;
+    pcihost->addrcfg_reg.cpumap[2] = 0;
+    pcihost->addrcfg_reg.cpumap[3] = 0;
+    pcihost->addrcfg_reg.pcidmabase[0] = 0x80000000ULL;
+    pcihost->addrcfg_reg.pcidmabase[1] = 0xfffffffffff00000ULL;
+    pcihost->addrcfg_reg.pcidmabase[2] = 0xfffffffffff00000ULL;
+    pcihost->addrcfg_reg.pcidmabase[3] = 0xfffffffffff00000ULL;
+    pcihost->addrcfg_reg.pcidmamask[0] = 0xfffffffffff00000ULL;
+    pcihost->addrcfg_reg.pcidmamask[1] = 0xfffffffffff00000ULL;
+    pcihost->addrcfg_reg.pcidmamask[2] = 0xfffffffffff00000ULL;
+    pcihost->addrcfg_reg.pcidmamask[3] = 0xfffffffffff00000ULL;
+    pcihost->addrcfg_reg.pcidmamap[0] = 0;
+    pcihost->addrcfg_reg.pcidmamap[1] = 0xfffffffffff00000ULL;
+    pcihost->addrcfg_reg.pcidmamap[2] = 0xfffffffffff00000ULL;
+    pcihost->addrcfg_reg.pcidmamap[3] = 0xfffffffffff00000ULL;
+
     phb->bus = pci_register_bus(DEVICE(dev), "pci",
                                 pci_bonito_set_irq, pci_bonito_map_irq, pcihost,
-                                get_system_memory(), get_system_io(),
+                                &pcihost->iomem_pcimem, get_system_io(),
                                 12<<3, 4);
+
+    dma_context_init(&pcihost->dma, &address_space_memory, pcidma_translate, NULL, NULL);
+    pci_setup_iommu(phb->bus, pci_dma_context_fn, pcihost);
 
     return 0;
 }
@@ -615,3 +770,26 @@ static void bonito_register_types(void)
 
 type_init(bonito_register_types)
 
+
+#if 0
+
+
+/*
+ * PHB PCI device
+ */
+hw/pci/pci.c
+    if (bus->dma_context_fn) {
+        pci_dev->dma = bus->dma_context_fn(bus, bus->dma_context_opaque, devfn);
+    } else {
+        /* FIXME: Make dma_context_fn use MemoryRegions instead, so this path is
+         * taken unconditionally */
+        /* FIXME: inherit memory region from bus creator */
+        memory_region_init_alias(&pci_dev->bus_master_enable_region, "bus master",
+                                 get_system_memory(), 0,
+                                 memory_region_size(get_system_memory()));
+        memory_region_set_enabled(&pci_dev->bus_master_enable_region, false);
+        address_space_init(&pci_dev->bus_master_as, &pci_dev->bus_master_enable_region);
+        pci_dev->dma = g_new(DMAContext, 1);
+        dma_context_init(pci_dev->dma, &pci_dev->bus_master_as, NULL, NULL, NULL);
+    }
+#endif
