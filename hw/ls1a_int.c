@@ -1,3 +1,12 @@
+//#define DEBUG_IRQ
+
+#ifdef DEBUG_IRQ
+#define DPRINTF(fmt, args...) \
+	do { printf("IRQ: " fmt , ##args); } while (0)
+#else
+#define DPRINTF(fmt, args...)
+#endif
+
 typedef struct GS232_INTCTLState {
 	uint32_t baseaddr;
 	uint32_t intreg_edge;
@@ -172,7 +181,7 @@ static void ls1a_intctl_reset(void *opaque)
 }
 
 
-void *ls1a_intctl_init(MemoryRegion *mr, hwaddr addr, qemu_irq parent_irq)
+static void *ls1a_intctl_init(MemoryRegion *mr, hwaddr addr, qemu_irq parent_irq)
 {
 	qemu_irq *irqs;
 	GS232_INTCTLState *s;
