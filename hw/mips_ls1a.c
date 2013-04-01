@@ -265,7 +265,7 @@ static void main_cpu_reset(void *opaque)
 }
 
 
-void *ls1a_intctl_init(MemoryRegion *mr, hwaddr addr, qemu_irq parent_irq);
+static void *ls1a_intctl_init(MemoryRegion *mr, hwaddr addr, qemu_irq parent_irq);
 
 static int board_map_irq(int bus,int dev,int func,int pin)
 {
@@ -275,7 +275,7 @@ static int board_map_irq(int bus,int dev,int func,int pin)
 
 static const int sector_len = 32 * 1024;
 
-PCIBus *pci_ls1a_init(qemu_irq *pic, int (*board_map_irq)(int bus,int dev,int func,int pin));
+static PCIBus *pcibus_ls1a_init(qemu_irq *pic, int (*board_map_irq)(int bus,int dev,int func,int pin));
 
 static void mips_ls1a_init (QEMUMachineInitArgs *args)
 {
@@ -405,7 +405,7 @@ static void mips_ls1a_init (QEMUMachineInitArgs *args)
 	}
 
 
-	pci_bus=pci_ls1a_init(&ls1a_irq1[6],board_map_irq);
+	pci_bus=pcibus_ls1a_init(&ls1a_irq1[6],board_map_irq);
 
 
 	sysbus_create_simple("exynos4210-ehci-usb",0x1fe00000, ls1a_irq1[0]);
@@ -594,14 +594,6 @@ machine_init(mips_machine_init);
 #include "pci/pci.h"
 #include "pci/pci_host.h"
 
-//#define DEBUG_IRQ
-
-#ifdef DEBUG_IRQ
-#define DPRINTF(fmt, args...) \
-	do { printf("IRQ: " fmt , ##args); } while (0)
-#else
-#define DPRINTF(fmt, args...)
-#endif
 
 /*
  * Registers of interrupt controller in sun4m.
@@ -752,7 +744,6 @@ static void bonito_pciconf_writel(void *opaque, hwaddr addr,
     PCIBonitoState *s = opaque;
     PCIDevice *d = PCI_DEVICE(s);
 
-    DPRINTF("bonito_pciconf_writel "TARGET_FMT_plx" val %x\n", addr, val);
     d->config_write(d, addr, val, 4);
 }
 
@@ -763,7 +754,6 @@ static uint64_t bonito_pciconf_readl(void *opaque, hwaddr addr,
     PCIBonitoState *s = opaque;
     PCIDevice *d = PCI_DEVICE(s);
 
-    DPRINTF("bonito_pciconf_readl "TARGET_FMT_plx"\n", addr);
     return d->config_read(d, addr, 4);
 }
 
@@ -843,7 +833,7 @@ static const TypeInfo bonito_info = {
 };
 
 
-PCIBus *pci_ls1a_init(qemu_irq *pic, int (*board_map_irq)(int bus,int dev,int func,int pin))
+static PCIBus *pcibus_ls1a_init(qemu_irq *pic, int (*board_map_irq)(int bus,int dev,int func,int pin))
 {
     DeviceState *dev;
     BonitoState *pcihost;
