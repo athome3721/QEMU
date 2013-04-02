@@ -677,7 +677,7 @@ static int pcidma_translate(DMAContext *dma,
     hwaddr offset;
     for(i=0;i<4;i++)
     {
-	    if((addr & pcihost->addrcfg_reg.pcidmamask[i]) == pcihost->addrcfg_reg.pcidmabase[i])
+	    if((uint32_t)(addr & pcihost->addrcfg_reg.pcidmamask[i]) == (uint32_t)pcihost->addrcfg_reg.pcidmabase[i])
 		    break;
     }
     if(i == 4) return -1;

@@ -347,7 +347,7 @@ static void mips_ls2f_ls1a_init (QEMUMachineInitArgs *args)
 
 
     /* Optional PCI video card */
-	for(i=0;i<nb_nics;i++)
+	for(i=1;i<nb_nics;i++)
 	{
 		char devaddr[10];
 
@@ -357,7 +357,9 @@ static void mips_ls2f_ls1a_init (QEMUMachineInitArgs *args)
 
 
 	hd=drive_get_next(IF_IDE);
-	pci_ls1a_init(pci_bus,14<<3, serial_hds, hd, &nd_table[0], flash_dinfo);
+	
+	printf("serial_hds[0]=%p\n", serial_hds[0]);
+	pci_ls1a_init(pci_bus,9<<3, serial_hds, hd, &nd_table[0], flash_dinfo);
 
 }
 
