@@ -228,7 +228,7 @@ static int aui_boot_code[] ={
 0x00000000,/* */
 };
 
-PCIBus *pci_bonito_init(CPUMIPSState *env,qemu_irq *pic, int irq,int (*board_map_irq)(int bus,int dev,int func,int pin));
+PCIBus *pci_bonito_init(CPUMIPSState *env,qemu_irq *pic, int irq,int (*board_map_irq)(int bus,int dev,int func,int pin),MemoryRegion *ram);
 int pci_ls1a_init(PCIBus *bus, int devfn, CharDriverState **serial, DriveInfo *hd, NICInfo *nd, DriveInfo *flash);
 static const int sector_len = 32 * 1024;
 static void mips_ls2f_ls1a_init (QEMUMachineInitArgs *args)
@@ -239,9 +239,7 @@ static void mips_ls2f_ls1a_init (QEMUMachineInitArgs *args)
 	const char *kernel_cmdline = args->kernel_cmdline;
 	const char *initrd_filename = args->initrd_filename;
 	char *filename;
-	MemoryRegion *address_space_mem = get_system_memory();
 	MemoryRegion *ram = g_new(MemoryRegion, 1);
-	MemoryRegion *lowram = g_new(MemoryRegion, 1);
 	MemoryRegion *bios;
 	int bios_size;
 	MIPSCPU *cpu;
@@ -279,14 +277,7 @@ static void mips_ls2f_ls1a_init (QEMUMachineInitArgs *args)
 
 		/* allocate RAM */
 	memory_region_init_ram(ram, "mips_ls3a.ram", ram_size);
-        memory_region_init_alias(lowram, "mips_ls3a.lowram", ram, 0, MIN(ram_size,256*0x100000));
 	vmstate_register_ram_global(ram);
-
-    /* allocate RAM */
-	memory_region_add_subregion(address_space_mem, 0, lowram);
-
-	memory_region_add_subregion(address_space_mem, 0x80000000, ram);
-
 
     /* Try to load a BIOS image. If this fails, we continue regardless,
        but initialize the hardware ourselves. When a kernel gets
@@ -324,10 +315,14 @@ static void mips_ls2f_ls1a_init (QEMUMachineInitArgs *args)
         loaderparams.kernel_filename = kernel_filename;
         loaderparams.kernel_cmdline = kernel_cmdline;
         loaderparams.initrd_filename = initrd_filename;
+	if(bios_size)
+         load_kernel();
+	else
+	{
         reset_info->vector = load_kernel();
 
         bios = g_new(MemoryRegion, 1);
-        memory_region_init_ram(bios, "mips_r4k.bios", bios_size);
+        memory_region_init_ram(bios, "tmpbios", bios_size);
         vmstate_register_ram_global(bios);
         memory_region_set_readonly(bios, true);
         memory_region_add_subregion(get_system_memory(), 0x1fc90000, bios);
@@ -336,6 +331,7 @@ static void mips_ls2f_ls1a_init (QEMUMachineInitArgs *args)
 	aui_boot_code[2] = reset_info->vector;
 	rom_add_blob_fixed("bios",aui_boot_code,sizeof(aui_boot_code),0x1fc90000);
 	reset_info->vector = 0xffffffffbfc90000LL;
+	}
     }
 
 
@@ -343,7 +339,7 @@ static void mips_ls2f_ls1a_init (QEMUMachineInitArgs *args)
 	int i;
 	PCIBus *pci_bus;
 
-	pci_bus=pci_bonito_init(env,(qemu_irq *)&env->irq[6],4,board_map_irq_ls1a);
+	pci_bus=pci_bonito_init(env,(qemu_irq *)&env->irq[6],4,board_map_irq_ls1a, ram);
 
 
     /* Optional PCI video card */
