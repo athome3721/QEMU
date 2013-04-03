@@ -58,7 +58,7 @@ struct BonitoState {
     struct bonito_regs regs;
     CPUMIPSState *cpu_env;
     MemoryRegion iomem_pcimem;
-    MemoryRegion iomem_pcimap[4];
+    MemoryRegion iomem_pcimap[3];
     int irq_offset;
     union{
     uint8_t addrcfg_mem[0x100];
@@ -72,6 +72,8 @@ struct BonitoState {
     } addrcfg_reg;
     };
     DMAContext dma;
+    MemoryRegion *ram;
+    MemoryRegion iomem_cpumap[4];
 };
 
 
@@ -112,6 +114,8 @@ static uint64_t addrcfg_readl(void *opaque, hwaddr addr, unsigned size)
 	
 }
 
+void update_cpumap(BonitoState *pcihost);
+
 static void addrcfg_writel(void *opaque, hwaddr addr,
 		uint64_t val,unsigned size)
 {
@@ -132,9 +136,7 @@ static void addrcfg_writel(void *opaque, hwaddr addr,
 	break;
 	}
 
-    if (range_covers_byte(0, 8, addr) || range_covers_byte(0x20, 8, addr) || range_covers_byte(0x40, 8, addr)) {
-        return;
-    }
+	update_cpumap(pcihost);
 }
 
 static const MemoryRegionOps addrcfg_ops = {
@@ -417,6 +419,7 @@ static void update_pcimap(BonitoState *pcihost)
 	struct bonito_regs *d=&pcihost->regs;
 	uint32_t pcimap = d->pcimap;
 
+	memory_region_transaction_begin();
 	if(pcihost->iomem_pcimap[0].parent)
 	memory_region_del_subregion(get_system_memory(), &pcihost->iomem_pcimap[0]);
 	if(pcihost->iomem_pcimap[1].parent)
@@ -426,11 +429,46 @@ static void update_pcimap(BonitoState *pcihost)
 
         memory_region_init_alias(&pcihost->iomem_pcimap[0], "pcimem0", &pcihost->iomem_pcimem, (pcimap&0x3f)<<26, 0x4000000);
         memory_region_init_alias(&pcihost->iomem_pcimap[1], "pcimem1", &pcihost->iomem_pcimem, ((pcimap>>6)&0x3f)<<26, 0x4000000);
-        memory_region_init_alias(&pcihost->iomem_pcimap[1], "pcimem2", &pcihost->iomem_pcimem, ((pcimap>>6)&0x3f)<<26, 0x4000000);
+        memory_region_init_alias(&pcihost->iomem_pcimap[2], "pcimem2", &pcihost->iomem_pcimem, ((pcimap>>12)&0x3f)<<26, 0x4000000);
 
 	memory_region_add_subregion(get_system_memory(), 0x10000000, &pcihost->iomem_pcimap[0]);
 	memory_region_add_subregion(get_system_memory(), 0x14000000, &pcihost->iomem_pcimap[1]);
 	memory_region_add_subregion(get_system_memory(), 0x18000000, &pcihost->iomem_pcimap[2]);
+	memory_region_transaction_commit();
+
+}
+
+void update_cpumap(BonitoState *pcihost)
+{
+	int i;
+	
+memory_region_transaction_begin();
+	for(i=0;i<4;i++)
+	{
+		if((pcihost->addrcfg_reg.cpumask[i] & pcihost->addrcfg_reg.cpubase[i]) != pcihost->addrcfg_reg.cpubase[i])
+			break;
+		int bit;
+		bit = ffs(pcihost->addrcfg_reg.cpumask[i]);
+		if(!bit) continue;
+		bit--;
+
+		if(pcihost->iomem_cpumap[i].parent)
+			memory_region_del_subregion(get_system_memory(), &pcihost->iomem_cpumap[i]);
+
+		if(pcihost->addrcfg_reg.cpumap[i]&1)
+		{
+			if(pcihost->addrcfg_reg.cpubase[i] == 0x10000000) continue;
+			memory_region_init_alias(&pcihost->iomem_cpumap[i], "cpumemi", &pcihost->iomem_pcimem, pcihost->addrcfg_reg.cpumap[i]&~1ULL, 1ULL<<bit);
+			memory_region_add_subregion(get_system_memory(), pcihost->addrcfg_reg.cpubase[i], &pcihost->iomem_cpumap[i]);
+		}
+		else
+		{
+
+			memory_region_init_alias(&pcihost->iomem_cpumap[i], "cpumemi", pcihost->ram, pcihost->addrcfg_reg.cpumap[i]&~1ULL, 1ULL<<bit);
+			memory_region_add_subregion(get_system_memory(), pcihost->addrcfg_reg.cpubase[i], &pcihost->iomem_cpumap[i]);
+		}
+	}
+memory_region_transaction_commit();
 
 }
 
@@ -504,10 +542,10 @@ static const MemoryRegionOps bonito_local_ops = {
 };
 
 
-PCIBus *pci_bonito_init(CPUMIPSState *env,qemu_irq *pic, int irq,int (*board_map_irq)(int bus,int dev,int func,int pin));
+PCIBus *pci_bonito_init(CPUMIPSState *env,qemu_irq *pic, int irq,int (*board_map_irq)(int bus,int dev,int func,int pin),MemoryRegion *ram);
 
 //--------------------------------------------
-PCIBus *pci_bonito_init(CPUMIPSState *env,qemu_irq *pic, int irq,int (*board_map_irq)(int bus,int dev,int func,int pin))
+PCIBus *pci_bonito_init(CPUMIPSState *env,qemu_irq *pic, int irq,int (*board_map_irq)(int bus,int dev,int func,int pin),MemoryRegion *ram)
 {
     DeviceState *dev;
     BonitoState *pcihost;
@@ -521,6 +559,7 @@ PCIBus *pci_bonito_init(CPUMIPSState *env,qemu_irq *pic, int irq,int (*board_map
     pcihost->pic = pic;
     pcihost->cpu_env = env;
     pcihost->irq_offset = irq;
+    pcihost->ram = ram;
     local_board_map_irq = board_map_irq;
     qdev_init_nofail(dev);
 
@@ -618,7 +657,7 @@ static int bonito_initfn(PCIDevice *dev)
 
 	{
 	MemoryRegion *addrconf_iomem = g_new(MemoryRegion, 1);
-	memory_region_init_io(addrconf_iomem, &addrcfg_ops, s->pcihost, "ls2f_addrconf", 0x100);
+	memory_region_init_io(addrconf_iomem, &addrcfg_ops, s->pcihost, "ls2f_addrconf", 0x1000);
 	memory_region_add_subregion(get_system_memory(), 0x3ff00000, addrconf_iomem);
 	}
 
@@ -708,8 +747,8 @@ static int bonito_pcihost_initfn(SysBusDevice *dev)
     pcihost->regs.pcimap = 0;
     update_pcimap(pcihost);
 
-    memory_region_init_alias(&pcihost->iomem_pcimap[3], "pcimem3", &pcihost->iomem_pcimem, 0x40000000, 0x40000000);
-    memory_region_add_subregion(get_system_memory(), 0x40000000, &pcihost->iomem_pcimap[3]);
+//    memory_region_init_alias(&pcihost->iomem_pcimap[3], "pcimem3", &pcihost->iomem_pcimem, 0x40000000, 0x40000000);
+//   memory_region_add_subregion(get_system_memory(), 0x40000000, &pcihost->iomem_pcimap[3]);
     pcihost->addrcfg_reg.cpubase[0] = 0;
     pcihost->addrcfg_reg.cpubase[1] = 0x10000000ULL;
     pcihost->addrcfg_reg.cpubase[2] = 0xfffffffffff00000ULL;
@@ -742,6 +781,7 @@ static int bonito_pcihost_initfn(SysBusDevice *dev)
 
     dma_context_init(&pcihost->dma, &address_space_memory, pcidma_translate, NULL, NULL);
     pci_setup_iommu(phb->bus, pci_dma_context_fn, pcihost);
+    update_cpumap(pcihost);
 
     return 0;
 }
