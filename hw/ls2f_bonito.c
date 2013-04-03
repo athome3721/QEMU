@@ -502,18 +502,18 @@ static void pci_bonito_local_writel (void *opaque, hwaddr addr,
 			break;
 		case 0x80:
 			//ddr config register
-			
-			if(val&0x100 && !(d->reg40[(0x80-0x40)/4]&0x100))
-			{
+			memory_region_transaction_begin();
+			if(ddrcfg_iomem->parent)
 				memory_region_del_subregion(get_system_memory(), ddrcfg_iomem);
-			}
+			
 
-			if(!(val&0x100) && (d->reg40[(0x80-0x40)/4]&0x100))
+			if(!(val&0x100))
 			{
 				memory_region_add_subregion_overlap(get_system_memory(), 0x0ffffe00&TARGET_PAGE_MASK, ddrcfg_iomem, 1);
 			}
 
 			d->reg40[(0x80-0x40)/4] = val;
+			memory_region_transaction_commit();
 			break;
 		case 0x84:
 			break;
