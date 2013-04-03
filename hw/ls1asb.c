@@ -11,6 +11,7 @@
 #include "sysemu/blockdev.h"
 #include "ssi.h"
 #include "i2c.h"
+#include "exec/address-spaces.h"
 
 #define PCI_VENDOR_ID_LS1A 0x126f
 #define PCI_DEVICE_ID_LS1A 0x501
@@ -91,11 +92,75 @@ static void pin1_set_irq(void *opaque, int irq, int level)
 
 #include "ls1a_int.c"
 
+static int clkreg[2];
+static MemoryRegion *ddrcfg_iomem;
+static int reg0420[1]={0x2};
+static struct LS1APciState *sbstat;
+
+static void mips_qemu_writel (void *opaque, hwaddr addr,
+		uint64_t val, unsigned size)
+{
+	addr=((hwaddr)(long)opaque) + addr;
+	switch(addr)
+	{
+		case 0x00e78030:
+		case 0x00e78034:
+			clkreg[(addr - 0x00e78030)/4] = val;
+			break;
+
+		case 0x00d00420:
+			memory_region_transaction_begin();
+			if(ddrcfg_iomem->parent)
+				memory_region_del_subregion(&sbstat->iomem_ddr, ddrcfg_iomem);
+
+			if((val&0x2) == 0)
+			{
+				memory_region_add_subregion_overlap(&sbstat->iomem_ddr, 0x0ffffe00&TARGET_PAGE_MASK, ddrcfg_iomem, 1);
+			}
+
+			reg0420[0] = val;
+			memory_region_transaction_commit();
+
+			break;
+	}
+}
+
+static uint64_t mips_qemu_readl (void *opaque, hwaddr addr, unsigned size)
+{
+	addr=((hwaddr)(long)opaque) + addr;
+	switch(addr)
+	{
+		case 0x00e78030:
+		case 0x00e78034:
+			return clkreg[(addr - 0x00e78030)/4];
+			break;
+		case 0x00d00420:
+			return reg0420[0];
+			break;
+		case 0x00fffe10:
+			return 1;
+			break;
+		case 0x00fffef0:
+			return 0x100000;
+			break;
+		case 0x00fffef2:
+			return 0x10;
+			break;
+	}
+	return 0;
+}
+
+static const MemoryRegionOps mips_qemu_ops = {
+    .read = mips_qemu_readl,
+    .write = mips_qemu_writel,
+    .endianness = DEVICE_NATIVE_ENDIAN,
+};
+
 static int ls1a_initfn(PCIDevice *dev)
 {
     struct LS1APciState *d;
     qemu_irq *ls1a_irq,*ls1a_irq1;
-    d = DO_UPCAST(struct LS1APciState, card, dev);
+    sbstat = d = DO_UPCAST(struct LS1APciState, card, dev);
     pci_config_set_vendor_id(d->card.config,0x126f);
     pci_config_set_device_id(d->card.config,0x0501);
     d->card.config[PCI_COMMAND] = PCI_COMMAND_IO | PCI_COMMAND_MEMORY |
@@ -340,6 +405,11 @@ static int ls1a_initfn(PCIDevice *dev)
 		memory_region_add_subregion(&d->iomem_axi, devaddr, s->mmio[0].memory);
 	}
 #endif
+	{
+                ddrcfg_iomem = g_new(MemoryRegion, 1);
+                memory_region_init_io(ddrcfg_iomem, &mips_qemu_ops, (void *)(0x0ffffe00&TARGET_PAGE_MASK), "ddr", TARGET_PAGE_SIZE);
+		mips_qemu_writel((void *)0x00d00420, 0, 0x0, 4);
+	}
 
 
     pci_register_bar(&d->card, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->iomem_dc);
