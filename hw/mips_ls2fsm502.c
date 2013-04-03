@@ -228,7 +228,7 @@ static int aui_boot_code[] ={
 0x00000000,/* */
 };
 
-PCIBus *pci_bonito_init(CPUMIPSState *env,qemu_irq *pic, int irq,int (*board_map_irq)(int bus,int dev,int func,int pin));
+PCIBus *pci_bonito_init(CPUMIPSState *env,qemu_irq *pic, int irq,int (*board_map_irq)(int bus,int dev,int func,int pin),MemoryRegion *ram);
 int pci_sm502_init(PCIBus *bus, int devfn, CharDriverState *chr);
 static const int sector_len = 32 * 1024;
 static void mips_ls2f_sm502_init (QEMUMachineInitArgs *args)
@@ -241,7 +241,6 @@ static void mips_ls2f_sm502_init (QEMUMachineInitArgs *args)
 	char *filename;
 	MemoryRegion *address_space_mem = get_system_memory();
 	MemoryRegion *ram = g_new(MemoryRegion, 1);
-	MemoryRegion *lowram = g_new(MemoryRegion, 1);
 	MemoryRegion *bios;
 	int bios_size;
 	MIPSCPU *cpu;
@@ -249,6 +248,8 @@ static void mips_ls2f_sm502_init (QEMUMachineInitArgs *args)
 	ResetData *reset_info;
 	int be;
 	DriveInfo *dinfo;
+	PCIBus *pci_bus;
+	int i;
 
 
     /* init CPUs */
@@ -280,14 +281,12 @@ static void mips_ls2f_sm502_init (QEMUMachineInitArgs *args)
 
 		/* allocate RAM */
 	memory_region_init_ram(ram, "mips_ls3a.ram", ram_size);
-        memory_region_init_alias(lowram, "mips_ls3a.lowram", ram, 0, MIN(ram_size,256*0x100000));
 	vmstate_register_ram_global(ram);
 
     /* allocate RAM */
-	memory_region_add_subregion(address_space_mem, 0, lowram);
 
-	memory_region_add_subregion(address_space_mem, 0x80000000, ram);
 
+	pci_bus=pci_bonito_init(env,(qemu_irq *)&env->irq[6],4,board_map_irq_sm502, ram);
 
     /* Try to load a BIOS image. If this fails, we continue regardless,
        but initialize the hardware ourselves. When a kernel gets
@@ -351,11 +350,7 @@ static void mips_ls2f_sm502_init (QEMUMachineInitArgs *args)
     }
 
 
-{
-	int i;
-	PCIBus *pci_bus;
 
-	pci_bus=pci_bonito_init(env,(qemu_irq *)&env->irq[6],4,board_map_irq_sm502);
 
 
     /* Optional PCI video card */
@@ -379,7 +374,6 @@ static void mips_ls2f_sm502_init (QEMUMachineInitArgs *args)
     if (serial_hds[1])
         serial_mm_init(address_space_mem, getenv("NB_SERIAL")?strtoul(getenv("NB_SERIAL"),0,0):0x1fc803f8, 0,env->irq[2],115200, serial_hds[1],1);
 
-}
 
 }
 
