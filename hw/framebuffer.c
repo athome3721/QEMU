@@ -48,6 +48,7 @@ void framebuffer_update_display(
     ram_addr_t addr;
     MemoryRegionSection mem_section;
     MemoryRegion *mem;
+    AddressSpace *as = memory_region_to_address_space(address_space);
 
     i = *first_row;
     *first_row = -1;
@@ -62,14 +63,14 @@ void framebuffer_update_display(
     assert(mem_section.offset_within_address_space == base);
 
     memory_region_sync_dirty_bitmap(mem);
-    src_base = cpu_physical_memory_map(base, &src_len, 0);
+    src_base = address_space_map(as, base, &src_len, 0);
     /* If we can't map the framebuffer then bail.  We could try harder,
        but it's not really worth it as dirty flag tracking will probably
        already have failed above.  */
     if (!src_base)
         return;
     if (src_len != src_width * rows) {
-        cpu_physical_memory_unmap(src_base, src_len, 0, 0);
+         address_space_unmap(as, src_base, src_len, 0, 0);
         return;
     }
     src = src_base;
@@ -99,7 +100,7 @@ void framebuffer_update_display(
         src += src_width;
         dest += dest_row_pitch;
     }
-    cpu_physical_memory_unmap(src_base, src_len, 0, 0);
+    address_space_unmap(as, src_base, src_len, 0, 0);
     if (first < 0) {
         return;
     }
