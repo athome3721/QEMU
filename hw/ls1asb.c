@@ -263,16 +263,16 @@ static int ls1a_initfn(PCIDevice *dev)
     memory_region_init(&d->iomem_dc, "ls1a_dc", 0x200000);
     memory_region_init(&d->iomem_axi, "ls1a_axi", 0x1000000);
     memory_region_init(&d->iomem_ddr, "ls1a_ddr", 0x40000000);
+    {
+	    MemoryRegion *ram = g_new(MemoryRegion, 1);
+	    memory_region_init_ram(ram, "mips_r4k.ram", 0x10000000);
+	    vmstate_register_ram_global(ram);
+	    memory_region_add_subregion(&d->iomem_ddr, 0, ram);
+    }
 
-#if 1
-    memory_region_init(&d->iomem_dc0, "ls1a_dc", 0x200000);
-    memory_region_init(&d->iomem_axi0, "ls1a_axi", 0x1000000);
-    memory_region_init(&d->iomem_ddr0, "ls1a_ddr", 0x40000000);
-#else
     memory_region_init_alias(&d->iomem_dc0, "ls1a_dc0", &d->iomem_dc, 0, 0x00200000);
-    memory_region_init_alias(&d->iomem_axi0, "ls1a_axi0", &d->iomem_axi, 0, 0x01000000);
+    memory_region_init_alias(&d->iomem_axi0, "ls1a_axi0", &d->iomem_axi, 0, 0x00e80000);
     memory_region_init_alias(&d->iomem_ddr0, "ls1a_ddr0", &d->iomem_ddr, 0, 0x40000000);
-#endif
 
 
     memory_region_init(&d->iomem_root, "system", INT32_MAX);
@@ -311,6 +311,16 @@ static int ls1a_initfn(PCIDevice *dev)
 	    i8042_mm_init(ls1a_irq[12], ls1a_irq[11], i8042, 0x10, 0x4);
 	    memory_region_add_subregion(&d->iomem_axi, 0x00e60000, i8042);
     }
+	{
+		DeviceState *dev;
+		SysBusDevice *sysbusdev;
+		hwaddr devaddr =  0x00101240;
+		dev = sysbus_create_simple("ls1a_fb", -1, NULL);
+		sysbusdev =  SYS_BUS_DEVICE(dev);
+		sysbusdev->mmio[0].addr = devaddr;
+		qdev_prop_set_ptr(dev, "root", &d->iomem_root);
+		memory_region_add_subregion(&d->iomem_dc, devaddr, sysbusdev->mmio[0].memory);
+	}
 
 	{
 		DeviceState *dev;
