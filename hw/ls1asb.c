@@ -272,7 +272,7 @@ static int ls1a_initfn(PCIDevice *dev)
 
     memory_region_init_alias(&d->iomem_dc0, "ls1a_dc0", &d->iomem_dc, 0, 0x00200000);
     memory_region_init_alias(&d->iomem_axi0, "ls1a_axi0", &d->iomem_axi, 0, 0x00e80000);
-    memory_region_init_alias(&d->iomem_ddr0, "ls1a_ddr0", &d->iomem_ddr, 0, 0x40000000);
+    memory_region_init_alias(&d->iomem_ddr0, "ls1a_ddr0", &d->iomem_ddr, 0, 0x10000000);
 
 
     memory_region_init(&d->iomem_root, "system", INT32_MAX);
