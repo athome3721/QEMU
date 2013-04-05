@@ -16,32 +16,45 @@
 #define PCI_VENDOR_ID_LS1A 0x126f
 #define PCI_DEVICE_ID_LS1A 0x501
 
+typedef struct pcilocal{
+	unsigned int pcimap;
+	unsigned int pcix_rgagte;
+	unsigned int pcix_noused;
+	unsigned int pcimap_cfg;
+} pcilocal;
 
 
 typedef struct LS1APciState {
-    PCIDevice card;
-    void *ls1a;
-    union{
-    CharDriverState **serial_hds;
-    void *serial_ptr;
-    };
-    union{
-    DriveInfo *hd;
-    void *hd_ptr;
-    };
-    union{
-    DriveInfo *flash;
-    void *flash_ptr;
-    };
-    union{
-    NICInfo *nd;
-    void *nd_ptr;
-    };
-    qemu_irq *pin0_irqs, *pin1_irqs;
-    uint8_t pin0_irqstat, pin1_irqstat;
-    MemoryRegion iomem_dc;
-    MemoryRegion iomem_axi;
-    MemoryRegion iomem_ddr;
+	PCIDevice card;
+	DMAContext dma;
+	AddressSpace as;
+	void *ls1a;
+	union{
+		CharDriverState **serial_hds;
+		void *serial_ptr;
+	};
+	union{
+		DriveInfo *hd;
+		void *hd_ptr;
+	};
+	union{
+		DriveInfo *flash;
+		void *flash_ptr;
+	};
+	union{
+		NICInfo *nd;
+		void *nd_ptr;
+	};
+	qemu_irq *pin0_irqs, *pin1_irqs;
+	uint8_t pin0_irqstat, pin1_irqstat;
+	MemoryRegion iomem_root;
+	MemoryRegion iomem_dc;
+	MemoryRegion iomem_axi;
+	MemoryRegion iomem_ddr;
+	pcilocal pcilocalreg;
+	MemoryRegion iomem_dc0;
+	MemoryRegion iomem_axi0;
+	MemoryRegion iomem_ddr0;
 } LS1APciState;
 
 
@@ -156,6 +169,81 @@ static const MemoryRegionOps mips_qemu_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
 
+static uint64_t pci_bonito_local_readl (void *opaque, hwaddr addr, unsigned size)
+{
+    LS1APciState *s = opaque;
+	uint32_t val;
+	uint32_t relative_addr=addr;
+	val = ((uint32_t *)&s->pcilocalreg)[relative_addr/sizeof(uint32_t)];
+	switch(size)
+	{
+	case 1:
+	val = (val>>(addr&3))&0xff;
+	break;
+	case 2:
+	val = (val>>(addr&3))&0xffff;
+	break;
+	}
+	return val;
+}
+
+static void pci_bonito_local_writel (void *opaque, hwaddr addr,
+		uint64_t val, unsigned size)
+{
+    LS1APciState *s = opaque;
+	uint32_t relative_addr=addr;
+	((uint32_t *)&s->pcilocalreg)[relative_addr/sizeof(uint32_t)]=val;
+}
+
+static const MemoryRegionOps pci_bonito_local_ops = {
+    .read = pci_bonito_local_readl,
+    .write = pci_bonito_local_writel,
+    .endianness = DEVICE_NATIVE_ENDIAN,
+};
+
+
+static int ls1adma_translate(DMAContext *dma,
+                               dma_addr_t addr,
+                               hwaddr *paddr,
+                               hwaddr *len,
+                               DMADirection dir)
+{
+    LS1APciState *s = container_of (dma, LS1APciState, dma);
+    uint32_t pcimap = s->pcilocalreg.pcimap;
+	//dma_memory_map
+    	//dma_memory_rw
+        //address_space_rw(dma->as, paddr, buf, plen, dir == DMA_DIRECTION_FROM_DEVICE);
+	if(addr >= 0x10000000 && addr < 0x14000000 )
+	{
+	dma->as = &address_space_memory;
+	*paddr = (addr&0x03ffffff)|((pcimap&0x3f)<<26);
+	*len = 0x14000000  - addr;
+	}
+	else if(addr >= 0x14000000 && addr < 0x18000000 )
+	{
+	dma->as = &address_space_memory;
+	*paddr = (addr&0x03ffffff)|(((pcimap>>6)&0x3f)<<26);
+	*len = 0x18000000  - addr;
+	}
+	else if(addr >= 0x18000000 && addr < 0x1c000000 )
+	{
+	dma->as = &address_space_memory;
+	*paddr = (addr&0x03ffffff)|(((pcimap>>12)&0x3f)<<26);
+	*len = 0x1c000000  - addr;
+	}
+	else
+	{
+	dma->as = &s->as;
+	*paddr = addr;
+	*len = 0x10000000;
+	}
+
+
+    return 0;
+}
+
+
+
 static int ls1a_initfn(PCIDevice *dev)
 {
     struct LS1APciState *d;
@@ -174,9 +262,24 @@ static int ls1a_initfn(PCIDevice *dev)
     d->card.config[PCI_HEADER_TYPE]     = PCI_HEADER_TYPE_NORMAL;
     d->card.config[PCI_INTERRUPT_PIN]   = 1;     /* interrupt pin 0 */
 
+
     memory_region_init(&d->iomem_dc, "ls1a_dc", 0x200000);
     memory_region_init(&d->iomem_axi, "ls1a_axi", 0x1000000);
     memory_region_init(&d->iomem_ddr, "ls1a_ddr", 0x40000000);
+
+    memory_region_init_alias(&d->iomem_dc0, "ls1a_dc0", &d->iomem_dc, 0, 0x200000);
+    memory_region_init_alias(&d->iomem_axi0, "ls1a_axi0", &d->iomem_axi, 0, 0x1000000);
+    memory_region_init_alias(&d->iomem_ddr0, "ls1a_ddr0", &d->iomem_ddr, 0, 0x40000000);
+
+
+    memory_region_init(&d->iomem_root, "system", INT32_MAX);
+    address_space_init(&d->as, &d->iomem_root);
+    address_space_memory.name = "ls1a memory";
+    dma_context_init(&d->dma, &d->as, ls1adma_translate, NULL, NULL);
+
+    memory_region_add_subregion(&d->iomem_root, 0x1c200000, &d->iomem_dc0);
+    memory_region_add_subregion(&d->iomem_root, 0x1f000000, &d->iomem_axi0);
+    memory_region_add_subregion(&d->iomem_root, 0x00000000, &d->iomem_ddr0);
 
     d->pin0_irqs = qemu_allocate_irqs(pin0_set_irq, d, 2);
     d->pin1_irqs = qemu_allocate_irqs(pin1_set_irq, d, 3);
@@ -411,6 +514,11 @@ static int ls1a_initfn(PCIDevice *dev)
 		mips_qemu_writel((void *)0x00d00420, 0, 0x0, 4);
 	}
 
+	{
+	 MemoryRegion *pcilocal_iomem = g_new(MemoryRegion, 1);
+	 memory_region_init_io(pcilocal_iomem, &pci_bonito_local_ops, d, "ls1a_pci_conf", 16);
+	 memory_region_add_subregion(&d->iomem_axi, 0x00d01114, pcilocal_iomem);
+	}
 
     pci_register_bar(&d->card, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->iomem_dc);
     pci_register_bar(&d->card, 2, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->iomem_axi);
