@@ -357,6 +357,7 @@ static int ls1a_initfn(PCIDevice *dev)
 		BusState *idebus[4];
 		dev = qdev_create(NULL, "sysbus-ahci");
 		qdev_prop_set_uint32(dev, "num-ports", 2);
+		qdev_prop_set_ptr(dev, "dma", &d->dma);
 		qdev_init_nofail(dev);
 
 		sysbusdev =  SYS_BUS_DEVICE(dev);
@@ -396,6 +397,7 @@ static int ls1a_initfn(PCIDevice *dev)
 		hwaddr devaddr =  0x00e10000;
 		dev = qdev_create(NULL, "sysbus-synopgmac");
 		qdev_set_nic_properties(dev, d->nd);
+		qdev_prop_set_ptr(dev, "dma", &d->dma);
 		qdev_init_nofail(dev);
 
 		sysbusdev =  SYS_BUS_DEVICE(dev);
