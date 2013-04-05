@@ -1551,6 +1551,10 @@ QEMUTimer *timer;
     NICConf conf;
 gmacMacRegisters mac; 
 gmacDmaRegisters dma;
+union{
+DMAContext *dmactx;
+void *dmactx_ptr;
+};
 qemu_irq irq;
 int receive_stop;
 } GMACState;
@@ -1634,21 +1638,21 @@ int pos;
    if(!s->dma.DmaTxCurrDesc) s->dma.DmaTxCurrDesc=s->dma.DmaTxBaseAddr;
    do
    {
-	cpu_physical_memory_read(s->dma.DmaTxCurrDesc,&desc,sizeof(desc));
+	dma_memory_read(s->dmactx,s->dma.DmaTxCurrDesc,&desc,sizeof(desc));
 	if(desc.status&DescOwnByDma)
 	{
 	 pos=0;
 	 size=0;
 	  if(desc.length&0x7ff)
 	  {
-		  cpu_physical_memory_read(desc.buffer1,txbuffer+pos,desc.length&0x7ff);
+		  dma_memory_read(s->dmactx,desc.buffer1,txbuffer+pos,desc.length&0x7ff);
 		  pos += desc.length & 0x7ff;
 		  size += desc.length & 0x7ff;
 	  }
 
 	  if(!(desc.DESC_STATUS & TxDescChain) && ((desc.length>>11)&0x7ff))
 	  {
-		  cpu_physical_memory_read(desc.buffer2,txbuffer+pos,(desc.length>>11)&0x7ff);
+		  dma_memory_read(s->dmactx,desc.buffer2,txbuffer+pos,(desc.length>>11)&0x7ff);
 		  pos += (desc.length>>11) & 0x7ff;
 		  size += (desc.length>>11) & 0x7ff;
 	  }
@@ -1663,7 +1667,7 @@ int pos;
 
 	desc.status &= ~DescOwnByDma;
 
-	cpu_physical_memory_write(s->dma.DmaTxCurrDesc,&desc,sizeof(desc));
+	dma_memory_write(s->dmactx,s->dma.DmaTxCurrDesc,&desc,sizeof(desc));
 
 
 	if(desc.DESC_STATUS & TxDescChain)
@@ -1828,14 +1832,14 @@ static ssize_t gmac_do_receive(NetClientState *nc, const uint8_t *buf, size_t si
 {
 	if(!s->dma.DmaRxCurrDesc) s->dma.DmaRxCurrDesc=s->dma.DmaRxBaseAddr;
 
-	cpu_physical_memory_read(s->dma.DmaRxCurrDesc,&desc,sizeof(desc));
+	dma_memory_read(s->dmactx,s->dma.DmaRxCurrDesc,&desc,sizeof(desc));
 	if(desc.status&DescOwnByDma)
 	{
 	 pos=0;
 	  if(desc.length&0x7ff)
 	  {
 		  once=min(desc.length&0x7ff,size);
-		  cpu_physical_memory_write(desc.buffer1,buf+pos,once);
+		  dma_memory_write(s->dmactx,desc.buffer1,buf+pos,once);
 		  pos += once;
 		  size -= once;
 	  }
@@ -1843,7 +1847,7 @@ static ssize_t gmac_do_receive(NetClientState *nc, const uint8_t *buf, size_t si
 	  if(!(desc.length & RxDescChain) && size && ((desc.length>>11)&0x7ff))
 	  {
 		  once=min((desc.length>>11)&0x7ff,size);
-		  cpu_physical_memory_write(desc.buffer2,buf+pos,once);
+		  dma_memory_write(s->dmactx,desc.buffer2,buf+pos,once);
 		  pos += once;
 		  size -= once;
 	  }
@@ -1860,7 +1864,7 @@ static ssize_t gmac_do_receive(NetClientState *nc, const uint8_t *buf, size_t si
 	desc.status |=(DescRxFirst|DescRxLast);
 	desc.status &= ~DescOwnByDma;
 
-	cpu_physical_memory_write(s->dma.DmaRxCurrDesc,&desc,sizeof(desc));
+	dma_memory_write(s->dmactx,s->dma.DmaRxCurrDesc,&desc,sizeof(desc));
 
 
 	if(desc.length & RxDescChain)
@@ -1969,6 +1973,7 @@ static int pci_gmac_init(PCIDevice *pci_dev)
 
 
     gmac_new(&d->gmac,object_get_typename(OBJECT(d)),d->dev.qdev.id); 
+    if(!d->gmac.dmactx) d->gmac.dmactx = pci_dev->dma;
 
     pci_register_bar(&d->dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->gmac.iomem);
 
@@ -1977,6 +1982,7 @@ static int pci_gmac_init(PCIDevice *pci_dev)
 
 static Property gmac_pci_properties[] = {
     DEFINE_NIC_PROPERTIES(gmac_pci_state, gmac.conf),
+    DEFINE_PROP_PTR("dma", gmac_pci_state, gmac.dmactx_ptr),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -2016,6 +2022,7 @@ static int gmac_sysbus_init(SysBusDevice *dev)
     gmac_sysbus_state *d = FROM_SYSBUS(gmac_sysbus_state, dev);
 
     gmac_new(&d->gmac,"synopgmac", dev->qdev.id);
+    if(!d->gmac.dmactx) d->gmac.dmactx = &dma_context_memory;
 
     sysbus_init_irq(dev, &d->gmac.irq);
     sysbus_init_mmio(dev, &d->gmac.iomem);
@@ -2025,6 +2032,7 @@ static int gmac_sysbus_init(SysBusDevice *dev)
 
 static Property gmac_sysbus_properties[] = {
     DEFINE_NIC_PROPERTIES(gmac_sysbus_state, gmac.conf),
+    DEFINE_PROP_PTR("dma", gmac_sysbus_state, gmac.dmactx_ptr),
     DEFINE_PROP_END_OF_LIST(),
 };
 
