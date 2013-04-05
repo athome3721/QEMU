@@ -215,21 +215,18 @@ static int ls1adma_translate(DMAContext *dma,
         //address_space_rw(dma->as, paddr, buf, plen, dir == DMA_DIRECTION_FROM_DEVICE);
 	if(addr >= 0x10000000 && addr < 0x14000000 )
 	{
-	dma->as = &address_space_memory;
-	*paddr = (addr&0x03ffffff)|((pcimap&0x3f)<<26);
-	*len = 0x14000000  - addr;
+	s->card.dma->translate(s->card.dma, (addr&0x03ffffff)|((pcimap&0x3f)<<26), paddr, len, dir);
+	dma->as = s->card.dma->as;
 	}
 	else if(addr >= 0x14000000 && addr < 0x18000000 )
 	{
-	dma->as = &address_space_memory;
-	*paddr = (addr&0x03ffffff)|(((pcimap>>6)&0x3f)<<26);
-	*len = 0x18000000  - addr;
+	s->card.dma->translate(s->card.dma, (addr&0x03ffffff)|(((pcimap>>6)&0x3f)<<26), paddr, len, dir);
+	dma->as = s->card.dma->as;
 	}
 	else if(addr >= 0x18000000 && addr < 0x1c000000 )
 	{
-	dma->as = &address_space_memory;
-	*paddr = (addr&0x03ffffff)|(((pcimap>>12)&0x3f)<<26);
-	*len = 0x1c000000  - addr;
+	s->card.dma->translate(s->card.dma, (addr&0x03ffffff)|(((pcimap>>12)&0x3f)<<26), paddr, len, dir);
+	dma->as = s->card.dma->as;
 	}
 	else
 	{
@@ -267,9 +264,15 @@ static int ls1a_initfn(PCIDevice *dev)
     memory_region_init(&d->iomem_axi, "ls1a_axi", 0x1000000);
     memory_region_init(&d->iomem_ddr, "ls1a_ddr", 0x40000000);
 
-    memory_region_init_alias(&d->iomem_dc0, "ls1a_dc0", &d->iomem_dc, 0, 0x200000);
-    memory_region_init_alias(&d->iomem_axi0, "ls1a_axi0", &d->iomem_axi, 0, 0x1000000);
+#if 1
+    memory_region_init(&d->iomem_dc0, "ls1a_dc", 0x200000);
+    memory_region_init(&d->iomem_axi0, "ls1a_axi", 0x1000000);
+    memory_region_init(&d->iomem_ddr0, "ls1a_ddr", 0x40000000);
+#else
+    memory_region_init_alias(&d->iomem_dc0, "ls1a_dc0", &d->iomem_dc, 0, 0x00200000);
+    memory_region_init_alias(&d->iomem_axi0, "ls1a_axi0", &d->iomem_axi, 0, 0x01000000);
     memory_region_init_alias(&d->iomem_ddr0, "ls1a_ddr0", &d->iomem_ddr, 0, 0x40000000);
+#endif
 
 
     memory_region_init(&d->iomem_root, "system", INT32_MAX);
@@ -455,9 +458,12 @@ static int ls1a_initfn(PCIDevice *dev)
 		DeviceState *dev;
 		SysBusDevice *s;
 		hwaddr devaddr =  0x00e78000;
-		dev=sysbus_create_simple("ls1a_nand", -1, ls1a_irq[13]);
+		dev = qdev_create(NULL, "ls1a_nand");
 		s =  SYS_BUS_DEVICE(dev);
 		s->mmio[0].addr = devaddr;
+		qdev_prop_set_ptr(dev, "dma", &d->dma);
+		qdev_init_nofail(dev);
+		sysbus_connect_irq(s, 0, ls1a_irq[13]);
 		memory_region_add_subregion(&d->iomem_axi, devaddr, s->mmio[0].memory);
 	}
 #endif
