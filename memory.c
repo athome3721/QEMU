@@ -453,7 +453,7 @@ const IORangeOps memory_region_iorange_ops = {
     .destructor = memory_region_iorange_destructor,
 };
 
-static AddressSpace *memory_region_to_address_space(MemoryRegion *mr)
+AddressSpace *memory_region_to_address_space(MemoryRegion *mr)
 {
     AddressSpace *as;
 

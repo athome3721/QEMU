@@ -743,6 +743,8 @@ void memory_region_set_alias_offset(MemoryRegion *mr,
 MemoryRegionSection memory_region_find(MemoryRegion *address_space,
                                        hwaddr addr, uint64_t size);
 
+AddressSpace *memory_region_to_address_space(MemoryRegion *mr);
+
 /**
  * memory_region_section_addr: get offset within MemoryRegionSection
  *
