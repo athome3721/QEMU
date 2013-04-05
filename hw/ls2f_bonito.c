@@ -765,7 +765,7 @@ static int bonito_pcihost_initfn(SysBusDevice *dev)
     pcihost->addrcfg_reg.pcidmabase[1] = 0xfffffffffff00000ULL;
     pcihost->addrcfg_reg.pcidmabase[2] = 0xfffffffffff00000ULL;
     pcihost->addrcfg_reg.pcidmabase[3] = 0xfffffffffff00000ULL;
-    pcihost->addrcfg_reg.pcidmamask[0] = 0xfffffffffff00000ULL;
+    pcihost->addrcfg_reg.pcidmamask[0] = 0xffffffff80000000ULL;
     pcihost->addrcfg_reg.pcidmamask[1] = 0xfffffffffff00000ULL;
     pcihost->addrcfg_reg.pcidmamask[2] = 0xfffffffffff00000ULL;
     pcihost->addrcfg_reg.pcidmamask[3] = 0xfffffffffff00000ULL;
