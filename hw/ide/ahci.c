@@ -1279,6 +1279,10 @@ typedef struct SysbusAHCIState {
     SysBusDevice busdev;
     AHCIState ahci;
     uint32_t num_ports;
+    union{
+	    DMAContext *dma;
+	    void *dma_ptr;
+    };
 } SysbusAHCIState;
 
 static const VMStateDescription vmstate_sysbus_ahci = {
@@ -1300,7 +1304,8 @@ static void sysbus_ahci_reset(DeviceState *dev)
 static int sysbus_ahci_init(SysBusDevice *dev)
 {
     SysbusAHCIState *s = FROM_SYSBUS(SysbusAHCIState, dev);
-    ahci_init(&s->ahci, &dev->qdev, &dma_context_memory, s->num_ports);
+    if(!s->dma) s->dma = &dma_context_memory;
+    ahci_init(&s->ahci, &dev->qdev, s->dma, s->num_ports);
 
     sysbus_init_mmio(dev, &s->ahci.mem);
     sysbus_init_irq(dev, &s->ahci.irq);
@@ -1309,6 +1314,7 @@ static int sysbus_ahci_init(SysBusDevice *dev)
 
 static Property sysbus_ahci_properties[] = {
     DEFINE_PROP_UINT32("num-ports", SysbusAHCIState, num_ports, 1),
+    DEFINE_PROP_PTR("dma", SysbusAHCIState, dma_ptr),
     DEFINE_PROP_END_OF_LIST(),
 };
 
