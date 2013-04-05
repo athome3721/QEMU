@@ -26,6 +26,7 @@
 #include "ui/console.h"
 #include "ui/pixel_ops.h"
 #include "framebuffer.h"
+#include "sysemu/dma.h"
 
 typedef struct {
     SysBusDevice busdev;
@@ -44,9 +45,11 @@ typedef struct {
     DisplayState *ds;
     int vram_size;
     ram_addr_t vram_offset;
-    uint8_t *vram_ptr;
 
-    hwaddr vram_base;
+    union{
+	    MemoryRegion *root;
+	    void *root_ptr;
+    };
 
     int index;
     int syncing;
@@ -126,7 +129,7 @@ static void ls1a_fb_update_screen(void *opaque)
         break;
     }
 
-    framebuffer_update_display(s->ds, sysbus_address_space(&s->busdev),
+    framebuffer_update_display(s->ds, s->root,
                                s->vram_offset,
                                s->width,
                                s->height,
@@ -147,7 +150,7 @@ static void ls1a_fb_update_screen(void *opaque)
 static void ls1a_fb_reset(ls1a_fb_state *s)
 {
 	int width=800,height=600,depth=16;
-	unsigned int fb_offset=0x02000000;
+	unsigned int fb_offset=0;
 
 	if(getenv("SIMPLEVGA"))
 	{
@@ -236,7 +239,6 @@ addr=0x1c301240 + addr;
   case 0x1c301240+OF_BUF_ADDR:
   case 0x1c301250+OF_BUF_ADDR:
   s->vram_offset = val;
-  s->vram_ptr = qemu_get_ram_ptr(s->vram_offset);
   s->need_update = 1;
 	ls1a_fb_size(s);
   break;
@@ -264,7 +266,7 @@ static int ls1a_fb_sysbus_init(SysBusDevice *dev)
     sysbus_init_mmio(dev, &d->iomem);
     d->vram_size = 0;
     d->vram_offset = 0;
-    d->vram_ptr = qemu_get_ram_ptr(d->vram_offset);
+    d->root = sysbus_address_space(dev);
     
     d->ds = graphic_console_init(ls1a_fb_update_screen,
                                  ls1a_fb_invalidate_screen,
@@ -274,6 +276,11 @@ static int ls1a_fb_sysbus_init(SysBusDevice *dev)
     return 0;
 }
 
+static Property ls1a_fb_properties[] = {
+    DEFINE_PROP_PTR("root", ls1a_fb_state, root_ptr),
+    DEFINE_PROP_END_OF_LIST(),
+};
+
 static void ls1a_fb_sysbus_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -281,6 +288,7 @@ static void ls1a_fb_sysbus_class_init(ObjectClass *klass, void *data)
 
     k->init = ls1a_fb_sysbus_init;
     dc->desc = "ls1a fb";
+    dc->props = ls1a_fb_properties;
 }
 
 static const TypeInfo ls1a_fb_sysbus_info = {
