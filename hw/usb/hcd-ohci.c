@@ -1874,6 +1874,10 @@ typedef struct {
     OHCIState ohci;
     uint32_t num_ports;
     dma_addr_t dma_offset;
+    union{
+	    DMAContext *dma;
+	    void *dma_ptr;
+    };
 } OHCISysBusState;
 
 static int ohci_init_pxa(SysBusDevice *dev)
@@ -1882,7 +1886,7 @@ static int ohci_init_pxa(SysBusDevice *dev)
 
     /* Cannot fail as we pass NULL for masterbus */
     usb_ohci_init(&s->ohci, &dev->qdev, s->num_ports, s->dma_offset, NULL, 0,
-                  &dma_context_memory);
+                  s->dma?:&dma_context_memory);
     sysbus_init_irq(dev, &s->ohci.irq);
     sysbus_init_mmio(dev, &s->ohci.mem);
 
@@ -1921,6 +1925,7 @@ static Property ohci_sysbus_properties[] = {
     DEFINE_PROP_UINT32("num-ports", OHCISysBusState, num_ports, 3),
     DEFINE_PROP_DMAADDR("dma-offset", OHCISysBusState, dma_offset, 3),
     DEFINE_PROP_DMAADDR("localmem_base", OHCISysBusState, ohci.localmem_base, 3),
+    DEFINE_PROP_PTR("dma", OHCISysBusState, dma_ptr),
     DEFINE_PROP_END_OF_LIST(),
 };
 
