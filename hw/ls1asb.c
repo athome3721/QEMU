@@ -327,6 +327,7 @@ static int ls1a_initfn(PCIDevice *dev)
 		SysBusDevice *sysbusdev;
 		hwaddr devaddr =  0x00e00000;
 		dev = qdev_create(NULL, "exynos4210-ehci-usb");
+		qdev_prop_set_ptr(dev, "dma", &d->dma);
 		qdev_init_nofail(dev);
 
 		sysbusdev =  SYS_BUS_DEVICE(dev);
@@ -342,6 +343,7 @@ static int ls1a_initfn(PCIDevice *dev)
 		dev = qdev_create(NULL, "sysbus-ohci");
 		qdev_prop_set_uint32(dev, "num-ports", 4);
 		qdev_prop_set_taddr(dev, "dma-offset", 0);
+		qdev_prop_set_ptr(dev, "dma", &d->dma);
 		qdev_init_nofail(dev);
 
 		sysbusdev =  SYS_BUS_DEVICE(dev);
