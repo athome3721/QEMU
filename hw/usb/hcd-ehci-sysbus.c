@@ -29,6 +29,7 @@ static const VMStateDescription vmstate_ehci_sysbus = {
 
 static Property ehci_sysbus_properties[] = {
     DEFINE_PROP_UINT32("maxframes", EHCISysBusState, ehci.maxframes, 128),
+    DEFINE_PROP_PTR("dma", EHCISysBusState, ehci.dma_ptr),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -40,6 +41,7 @@ static int usb_ehci_sysbus_initfn(SysBusDevice *dev)
 
     s->capsbase = sec->capsbase;
     s->opregbase = sec->opregbase;
+    if(!s->dma)
     s->dma = &dma_context_memory;
 
     usb_ehci_initfn(s, DEVICE(dev));
