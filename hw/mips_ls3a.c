@@ -40,6 +40,7 @@
 #include "exec/address-spaces.h"
 #include "ide.h"
 #include "mc146818rtc.h"
+#include "loongson_bootparam.h"
 
 #ifdef TARGET_WORDS_BIGENDIAN
 #define BIOS_FILENAME "mips_bios.bin"
@@ -59,6 +60,9 @@ static const int ide_iobase2[2] = { 0x3f6, 0x376 };
 static const int ide_irq[2] = { 14, 15 };
 
 extern FILE *logfile;
+static void *boot_params_buf;
+static void *boot_params_p;
+#define align(x) (((x)+15)&~15)
 
 
 /* i8254 PIT is attached to the IRQ0 at PIC i8259 */
@@ -68,6 +72,7 @@ static struct _loaderparams {
     const char *kernel_filename;
     const char *kernel_cmdline;
     const char *initrd_filename;
+    target_ulong a0,a1,a2;
 } loaderparams;
 
 
@@ -78,13 +83,149 @@ typedef struct ResetData {
 	uint64_t vector;
 } ResetData;
 
+
+#define BOOTPARAM_PHYADDR ((64 << 20))
+#define BOOTPARAM_ADDR (0x80000000+BOOTPARAM_PHYADDR)
+// should set argc,argv
+//env->gpr[REG][env->current_tc]
+static int set_bootparam(ram_addr_t initrd_offset,long initrd_size)
+{
+	char memenv[32];
+	char highmemenv[32];
+	const char *pmonenv[]={"cpuclock=200000000",memenv,highmemenv};
+	int i;
+	long params_size;
+	char *params_buf;
+	unsigned int *parg_env;
+	int ret;
+
+	/* Store command line.  */
+	params_size = 264;
+	params_buf = g_malloc(params_size);
+
+	parg_env=(void *)params_buf;
+
+	/*
+	 * pram buf like this:
+	 *argv[0] argv[1] 0 env[0] env[1] ...env[i] ,0, argv[0]'s data , argv[1]'s data ,env[0]'data,...,env[i]'s dat,0
+	 */
+
+	//*count user special env
+	for(ret=0,i=0;environ[i];i++)
+		if(!strncmp(environ[i],"ENV_",4))ret+=4;
+
+	//jump over argv and env area
+	ret +=(3+sizeof(pmonenv)/sizeof(char *)+1)*4;
+	//argv0
+	*parg_env++=BOOTPARAM_ADDR+ret;
+	ret +=1+snprintf(params_buf+ret,256-ret,"g");
+	//argv1
+	*parg_env++=BOOTPARAM_ADDR+ret;
+	if (initrd_size > 0) {
+		ret +=1+snprintf(params_buf+ret,256-ret, "rd_start=0x" TARGET_FMT_lx " rd_size=%li %s",
+				PHYS_TO_VIRT((uint32_t)initrd_offset),
+				initrd_size, loaderparams.kernel_cmdline);
+	} else {
+		ret +=1+snprintf(params_buf+ret, 256-ret, "%s", loaderparams.kernel_cmdline);
+	}
+	//argv2
+	*parg_env++=0;
+
+	//env
+	sprintf(memenv,"memsize=%d",loaderparams.ram_size>0x10000000?256:(loaderparams.ram_size>>20));
+	sprintf(highmemenv,"highmemsize=%d",loaderparams.ram_size>0x10000000?(loaderparams.ram_size>>20)-256:0);
+
+
+	for(i=0;i<sizeof(pmonenv)/sizeof(char *);i++)
+	{
+		*parg_env++=BOOTPARAM_ADDR+ret;
+		ret +=1+snprintf(params_buf+ret,256-ret,"%s",pmonenv[i]);
+	}
+
+	for(i=0;environ[i];i++)
+	{
+		if(!strncmp(environ[i],"ENV_",4)){
+			*parg_env++=BOOTPARAM_ADDR+ret;
+			ret +=1+snprintf(params_buf+ret,256-ret,"%s",&environ[i][4]);
+		}
+	}
+	*parg_env++=0;
+	rom_add_blob_fixed("params", params_buf, params_size,
+			BOOTPARAM_PHYADDR);
+	loaderparams.a0 = 2;
+	loaderparams.a1 = (target_ulong)0xffffffff80000000ULL+BOOTPARAM_PHYADDR;
+	loaderparams.a2 = (target_ulong)0xffffffff80000000ULL+BOOTPARAM_PHYADDR +12;
+	
+return 0;
+}
+
+static int set_bootparam1(ram_addr_t initrd_offset,long initrd_size)
+{
+	char memenv[32];
+	char highmemenv[32];
+	long params_size;
+	void *params_buf;
+	unsigned int *parg_env;
+	int ret;
+
+	/* Store command line.  */
+	params_size = 0x100000;
+	params_buf = g_malloc(params_size);
+
+	parg_env=(void *)params_buf;
+
+	/*
+	 * pram buf like this:
+	 *argv[0] argv[1] 0 env[0] env[1] ...env[i] ,0, argv[0]'s data , argv[1]'s data ,env[0]'data,...,env[i]'s dat,0
+	 */
+
+	//jump over argv and env area
+	ret =(3+1)*4;
+	//argv0
+	*parg_env++=BOOTPARAM_ADDR+ret;
+	ret +=1+snprintf(params_buf+ret,256-ret,"g");
+	//argv1
+	*parg_env++=BOOTPARAM_ADDR+ret;
+	if (initrd_size > 0) {
+		ret +=1+snprintf(params_buf+ret,256-ret, "rd_start=0x" TARGET_FMT_lx " rd_size=%li %s",
+				PHYS_TO_VIRT((uint32_t)initrd_offset),
+				initrd_size, loaderparams.kernel_cmdline);
+	} else {
+		ret +=1+snprintf(params_buf+ret, 256-ret, "%s", loaderparams.kernel_cmdline);
+	}
+	//argv2
+	*parg_env++=0;
+
+	//env
+
+	sprintf(memenv,"%d",loaderparams.ram_size>0x10000000?256:(loaderparams.ram_size>>20));
+	sprintf(highmemenv,"%d",loaderparams.ram_size>0x10000000?(loaderparams.ram_size>>20)-256:0);
+	setenv("memsize", memenv, 1);
+	setenv("highmemsize", highmemenv, 1);
+
+	ret = ((ret+32)&~31);
+
+	boot_params_buf = (void *)(params_buf+ret);
+	boot_params_p = boot_params_buf + align(sizeof(struct boot_params));
+
+	init_boot_param(boot_params_buf);
+	printf("param len=%ld\n", boot_params_p-params_buf);
+
+	rom_add_blob_fixed("params", params_buf, params_size,
+			BOOTPARAM_PHYADDR);
+	loaderparams.a0 = 2;
+	loaderparams.a1 = (target_ulong)0xffffffff80000000ULL+BOOTPARAM_PHYADDR;
+	loaderparams.a2 = (target_ulong)0xffffffff80000000ULL+BOOTPARAM_PHYADDR + ret;
+        printf("env %x\n", BOOTPARAM_PHYADDR + ret);
+return 0;
+}
+
+
 static int64_t load_kernel(void)
 {
     int64_t entry, kernel_low, kernel_high;
-    long kernel_size, initrd_size, params_size;
-    char *params_buf;
+    long kernel_size, initrd_size;
     ram_addr_t initrd_offset;
-        int ret;
 
 	if(getenv("BOOTROM"))
 	{
@@ -128,70 +269,12 @@ static int64_t load_kernel(void)
         }
     }
 
-    /* Store command line.  */
-    params_size = 264;
-	params_buf = g_malloc(params_size);
 
+	if(!getenv("LOONGSONENV"))
+	 set_bootparam(initrd_offset, initrd_size);
+	else
+	 set_bootparam1(initrd_offset, initrd_size);
 	
-#define BOOTPARAM_PHYADDR ((64 << 20) - 264)
-#define BOOTPARAM_ADDR (0x80000000+BOOTPARAM_PHYADDR)
-// should set argc,argv
-//env->gpr[REG][env->current_tc]
-	{
-		char memenv[32];
-		char highmemenv[32];
-		const char *pmonenv[]={"cpuclock=200000000",memenv,highmemenv};
-		int i;
-		unsigned int *parg_env=(void *)params_buf;
-		/*
-		 * pram buf like this:
-		 *argv[0] argv[1] 0 env[0] env[1] ...env[i] ,0, argv[0]'s data , argv[1]'s data ,env[0]'data,...,env[i]'s dat,0
-		 */
-
-		//*count user special env
-		for(ret=0,i=0;environ[i];i++)
-			if(!strncmp(environ[i],"ENV_",4))ret+=4;
-
-		//jump over argv and env area
-		ret +=(3+sizeof(pmonenv)/sizeof(char *)+1)*4;
-		//argv0
-		*parg_env++=BOOTPARAM_ADDR+ret;
-		ret +=1+snprintf(params_buf+ret,256-ret,"g");
-		//argv1
-		*parg_env++=BOOTPARAM_ADDR+ret;
-		if (initrd_size > 0) {
-			ret +=1+snprintf(params_buf+ret,256-ret, "rd_start=0x" TARGET_FMT_lx " rd_size=%li %s",
-					PHYS_TO_VIRT((uint32_t)initrd_offset),
-					initrd_size, loaderparams.kernel_cmdline);
-		} else {
-			ret +=1+snprintf(params_buf+ret, 256-ret, "%s", loaderparams.kernel_cmdline);
-		}
-		//argv2
-		*parg_env++=0;
-
-		//env
-		sprintf(memenv,"memsize=%d",loaderparams.ram_size>0x10000000?256:(loaderparams.ram_size>>20));
-		sprintf(highmemenv,"highmemsize=%d",loaderparams.ram_size>0x10000000?(loaderparams.ram_size>>20)-256:0);
-
-
-		for(i=0;i<sizeof(pmonenv)/sizeof(char *);i++)
-		{
-			*parg_env++=BOOTPARAM_ADDR+ret;
-			ret +=1+snprintf(params_buf+ret,256-ret,"%s",pmonenv[i]);
-		}
-
-		for(i=0;environ[i];i++)
-		{
-			if(!strncmp(environ[i],"ENV_",4)){
-				*parg_env++=BOOTPARAM_ADDR+ret;
-				ret +=1+snprintf(params_buf+ret,256-ret,"%s",&environ[i][4]);
-			}
-		}
-		*parg_env++=0;
-		rom_add_blob_fixed("params", params_buf, params_size,
-				BOOTPARAM_PHYADDR);
-
-	}
 return entry;
 }
 static void main_cpu_reset(void *opaque)
@@ -201,9 +284,9 @@ static void main_cpu_reset(void *opaque)
 
 	cpu_reset(CPU(s->cpu));
 	env->active_tc.PC = s->vector;
-	env->active_tc.gpr[4]=2;
-	env->active_tc.gpr[5]=(target_ulong)0xffffffff80000000ULL+BOOTPARAM_PHYADDR;
-	env->active_tc.gpr[6]=(target_ulong)0xffffffff80000000ULL+BOOTPARAM_PHYADDR +12;
+	env->active_tc.gpr[4]=loaderparams.a0;
+	env->active_tc.gpr[5]=loaderparams.a1;
+	env->active_tc.gpr[6]=loaderparams.a2;
 }
 
 #define MAX_CPUS 4
@@ -1082,3 +1165,6 @@ PCIBus *pci_ls3a_init(qemu_irq *pic, int (*board_map_irq)(int bus,int dev,int fu
 
 	return s;
 }
+
+#define LOONGSON_3ASINGLE
+#include "loongson_bootparam.c"

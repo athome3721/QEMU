@@ -1,15 +1,5 @@
 #include <stdlib.h>
 #include <stdio.h>
-#include "loongson_bootparam.h"
-
-struct loongson_params  g_lp = { 0 };
-struct efi_memory_map_loongson g_map = { 0 };
-struct efi_cpuinfo_loongson g_cpuinfo_loongson = { 0 };
-struct system_loongson g_sysitem = { 0 };
-struct irq_source_routing_table g_irq_source = { 0 };
-struct interface_info g_interface = { 0 };
-struct board_devices g_board ;
-struct loongson_special_attribute g_special = { 0 };
 
 extern void (*poweroff_pt)(void);
 extern void (*reboot_pt)(void);
@@ -17,13 +7,13 @@ void init_efi(struct efi *efi);
 void init_reset_system(struct efi_reset_system_t *reset);
 void init_smbios(struct smbios_tables *smbios);
 void init_loongson_params(struct loongson_params *lp);
-struct efi_memory_map_loongson * init_memory_map(void);
-struct efi_cpuinfo_loongson *init_cpu_info(void);
-struct system_loongson *init_system_loongson(void);
-struct irq_source_routing_table *init_irq_source(void);
-struct interface_info *init_interface_info(void);
-static struct board_devices *board_devices_info(void);
-struct loongson_special_attribute *init_special_info(void);
+struct efi_memory_map_loongson * init_memory_map(void *);
+struct efi_cpuinfo_loongson *init_cpu_info(void *);
+struct system_loongson *init_system_loongson(void *);
+struct irq_source_routing_table *init_irq_source(void *);
+struct interface_info *init_interface_info(void *);
+static struct board_devices *board_devices_info(void *);
+struct loongson_special_attribute *init_special_info(void *);
 
 #ifdef RS780E
 extern unsigned char vgarom[];
@@ -69,20 +59,29 @@ void init_smbios(struct smbios_tables *smbios)
 
 void init_loongson_params(struct loongson_params *lp)
 {
+ void *p = boot_params_p;
 
-  lp->memory_offset = (unsigned long long)init_memory_map() - (unsigned long long)lp;
-  lp->cpu_offset = (unsigned long long)init_cpu_info() - (unsigned long long)lp; 
-  lp->system_offset = (unsigned long long)init_system_loongson() - (unsigned long long)lp;
-  lp->irq_offset = (unsigned long long)init_irq_source() - (unsigned long long)lp; 
-  lp->interface_offset = (unsigned long long)init_interface_info() - (unsigned long long)lp;
-  lp->boarddev_table_offset = (unsigned long long)board_devices_info() - (unsigned long long)lp;
-  lp->special_offset = (unsigned long long)init_special_info() - (unsigned long long)lp; 
+  lp->memory_offset = (unsigned long long)init_memory_map(p) - (unsigned long long)lp;
+  p += align(sizeof(struct efi_memory_map_loongson));
+  lp->cpu_offset = (unsigned long long)init_cpu_info(p) - (unsigned long long)lp; 
+  p += align(sizeof(struct efi_cpuinfo_loongson));
+  lp->system_offset = (unsigned long long)init_system_loongson(p) - (unsigned long long)lp;
+  p += align(sizeof(struct system_loongson));
+  lp->irq_offset = (unsigned long long)init_irq_source(p) - (unsigned long long)lp; 
+  p += align(sizeof(struct irq_source_routing_table));
+  lp->interface_offset = (unsigned long long)init_interface_info(p) - (unsigned long long)lp;
+  p += align(sizeof(struct interface_info));
+  lp->boarddev_table_offset = (unsigned long long)board_devices_info(p) - (unsigned long long)lp;
+  p+= align(sizeof(struct board_devices));
+  lp->special_offset = (unsigned long long)init_special_info(p) - (unsigned long long)lp; 
+  p+= align(sizeof(struct loongson_special_attribute));
+  boot_params_p = p;
 }
 
 
-struct efi_memory_map_loongson * init_memory_map(void)
+struct efi_memory_map_loongson * init_memory_map(void *g_map)
 {
-  struct efi_memory_map_loongson *emap = &g_map;
+  struct efi_memory_map_loongson *emap = g_map;
 
 
   //map->mem_start_addr = 0x80000000;
@@ -219,9 +218,9 @@ struct efi_memory_map_loongson * init_memory_map(void)
   enum loongson_cpu_type cputype = Loongson_3A;
 #endif
 
-struct efi_cpuinfo_loongson *init_cpu_info(void)
+struct efi_cpuinfo_loongson *init_cpu_info(void *g_cpuinfo_loongson)
 {
-  struct efi_cpuinfo_loongson *c = &g_cpuinfo_loongson;
+  struct efi_cpuinfo_loongson *c = g_cpuinfo_loongson;
 
   c->processor_id = PRID_IMP_LOONGSON;
   c->cputype  = cputype;
@@ -255,9 +254,9 @@ struct efi_cpuinfo_loongson *init_cpu_info(void)
 return c;
 }
  
-struct system_loongson *init_system_loongson(void)
+struct system_loongson *init_system_loongson(void *g_sysitem)
 {
- struct system_loongson *s = &g_sysitem;
+ struct system_loongson *s = g_sysitem;
   s->ccnuma_smp = 1;
 #ifdef LOONGSON_3ASERVER
   s->ccnuma_smp = 1;
@@ -291,10 +290,10 @@ enum loongson_irq_source_enum
 
 
 
-struct irq_source_routing_table *init_irq_source(void)
+struct irq_source_routing_table *init_irq_source(void *g_irq_source)
 {
 
- struct irq_source_routing_table *irq_info = &g_irq_source ;
+ struct irq_source_routing_table *irq_info = g_irq_source ;
 
 	
 	irq_info->PIC_type = HT;
@@ -319,10 +318,10 @@ struct irq_source_routing_table *init_irq_source(void)
 	return irq_info;
 }
 
-struct interface_info *init_interface_info(void)
+struct interface_info *init_interface_info(void *g_interface)
 {
   
- struct interface_info *inter = &g_interface;
+ struct interface_info *inter = g_interface;
  int flashsize = 0x80000;
 
   inter->vers = 0x0001;
@@ -334,10 +333,10 @@ struct interface_info *init_interface_info(void)
   return inter;
 }
 
-static struct board_devices *board_devices_info(void)
+static struct board_devices *board_devices_info(void *g_board)
 {
   
- struct board_devices *bd = &g_board;
+ struct board_devices *bd = g_board;
  
 #ifdef LOONGSON_3ASINGLE
   strcpy(bd->name,"Loongson-3A-780E-1w-V1.03-demo");
@@ -375,10 +374,10 @@ static struct board_devices *board_devices_info(void)
 }
 
 
-struct loongson_special_attribute *init_special_info(void)
+struct loongson_special_attribute *init_special_info(void *g_special)
 {
   
-  struct loongson_special_attribute  *special = &g_special;
+  struct loongson_special_attribute  *special = g_special;
   char update[11]="2013-01-01";
   int VRAM_SIZE=0x20000;
   
