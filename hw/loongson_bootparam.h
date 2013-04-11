@@ -73,7 +73,7 @@ struct system_loongson{
 	u16 vers;/*version of system_loongson*/
 	u32 ccnuma_smp; // 0:no numa; 1: has numa
 	u32 sing_double_channel;//1:single; 2:double
-}__attribute__((packd));
+}__attribute__((packed));
 
 struct irq_source_routing_table {
 
@@ -100,7 +100,7 @@ struct interface_info{
 	u16 size; /**/
 	u8 flag;/**/
 	char description[64]; /**/
-}__attribute__((pached));
+}__attribute__((packed));
 
 
 #define MAX_RESOUCR_NUMBER 128
@@ -185,4 +185,5 @@ struct boot_params{
 #define SMBIOS_SIZE_LIMIT 0x800
 
 void loongson_smbios_init(void);
+int init_boot_param(struct boot_params *bp);
 #endif

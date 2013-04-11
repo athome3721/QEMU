@@ -787,7 +787,7 @@ static int bonito_initfn(PCIDevice *dev)
     memory_region_init_io(&phb->conf_mem, &bonito_pciconf_ops, s,
                           "north-bridge-pci-config", 0x100);
     sysbus_init_mmio(sysbus, &phb->conf_mem);
-    sysbus_mmio_map(sysbus, 1, 0x1fe00000);
+    sysbus_mmio_map(sysbus, 1, 0x1c110000);
 
     /* set the south bridge pci configure  mapping */
     memory_region_init_io(&phb->data_mem, &pci_ls1a_config_ops, s,

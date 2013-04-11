@@ -1,7 +1,6 @@
 #include <stdlib.h>
 #include <stdio.h>
-#include "bootparam.h"
-#include "../common/smbios/smbios.h"
+#include "loongson_bootparam.h"
 
 struct loongson_params  g_lp = { 0 };
 struct efi_memory_map_loongson g_map = { 0 };
@@ -9,7 +8,7 @@ struct efi_cpuinfo_loongson g_cpuinfo_loongson = { 0 };
 struct system_loongson g_sysitem = { 0 };
 struct irq_source_routing_table g_irq_source = { 0 };
 struct interface_info g_interface = { 0 };
-struct interface_info g_board = { 0 };
+struct board_devices g_board ;
 struct loongson_special_attribute g_special = { 0 };
 
 extern void (*poweroff_pt)(void);
@@ -18,13 +17,13 @@ void init_efi(struct efi *efi);
 void init_reset_system(struct efi_reset_system_t *reset);
 void init_smbios(struct smbios_tables *smbios);
 void init_loongson_params(struct loongson_params *lp);
-struct efi_memory_map_loongson * init_memory_map();
-struct efi_cpuinfo_loongson *init_cpu_info();
-struct system_loongson *init_system_loongson();
-struct irq_source_routing_table *init_irq_source();
-struct interface_info *init_interface_info();
-struct board_devices *board_devices_info();
-struct loongson_special_attribute *init_special_info();
+struct efi_memory_map_loongson * init_memory_map(void);
+struct efi_cpuinfo_loongson *init_cpu_info(void);
+struct system_loongson *init_system_loongson(void);
+struct irq_source_routing_table *init_irq_source(void);
+struct interface_info *init_interface_info(void);
+static struct board_devices *board_devices_info(void);
+struct loongson_special_attribute *init_special_info(void);
 
 #ifdef RS780E
 extern unsigned char vgarom[];
@@ -38,7 +37,7 @@ int init_boot_param(struct boot_params *bp)
   init_reset_system(&(bp->reset_system));
 
 
-  return bp;
+  return 0;
 }
 
 void init_efi(struct efi *efi)
@@ -48,8 +47,8 @@ void init_efi(struct efi *efi)
 
 void init_reset_system(struct efi_reset_system_t *reset)
 {
-  reset->Shutdown = poweroff_pt;
-  reset->ResetWarm = reboot_pt;
+  reset->Shutdown = 0xffffffffbfc00000ULL;
+  reset->ResetWarm = 0xffffffffbfc00000ULL;
 }
 
 void init_smbios(struct smbios_tables *smbios)
@@ -81,7 +80,7 @@ void init_loongson_params(struct loongson_params *lp)
 }
 
 
-struct efi_memory_map_loongson * init_memory_map()
+struct efi_memory_map_loongson * init_memory_map(void)
 {
   struct efi_memory_map_loongson *emap = &g_map;
 
@@ -220,11 +219,9 @@ struct efi_memory_map_loongson * init_memory_map()
   enum loongson_cpu_type cputype = Loongson_3A;
 #endif
 
-struct efi_cpuinfo_loongson *init_cpu_info()
+struct efi_cpuinfo_loongson *init_cpu_info(void)
 {
   struct efi_cpuinfo_loongson *c = &g_cpuinfo_loongson;
-  u32 available_core_mask = 0;
-  u32 available = 0;
 
   c->processor_id = PRID_IMP_LOONGSON;
   c->cputype  = cputype;
@@ -258,7 +255,7 @@ struct efi_cpuinfo_loongson *init_cpu_info()
 return c;
 }
  
-struct system_loongson *init_system_loongson()
+struct system_loongson *init_system_loongson(void)
 {
  struct system_loongson *s = &g_sysitem;
   s->ccnuma_smp = 1;
@@ -294,7 +291,7 @@ enum loongson_irq_source_enum
 
 
 
-struct irq_source_routing_table *init_irq_source()
+struct irq_source_routing_table *init_irq_source(void)
 {
 
  struct irq_source_routing_table *irq_info = &g_irq_source ;
@@ -322,7 +319,7 @@ struct irq_source_routing_table *init_irq_source()
 	return irq_info;
 }
 
-struct interface_info *init_interface_info()
+struct interface_info *init_interface_info(void)
 {
   
  struct interface_info *inter = &g_interface;
@@ -337,7 +334,7 @@ struct interface_info *init_interface_info()
   return inter;
 }
 
-struct board_devices *board_devices_info()
+static struct board_devices *board_devices_info(void)
 {
   
  struct board_devices *bd = &g_board;
@@ -378,7 +375,7 @@ struct board_devices *board_devices_info()
 }
 
 
-struct loongson_special_attribute *init_special_info()
+struct loongson_special_attribute *init_special_info(void)
 {
   
   struct loongson_special_attribute  *special = &g_special;
