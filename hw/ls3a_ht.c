@@ -124,6 +124,8 @@ struct LS3BonitoState {
     MemoryRegion iomem_pciemem;
     MemoryRegion iomem_pcimem;
     MemoryRegion iomem_pcimap[3];
+    MemoryRegion iomem_pcieio;
+    MemoryRegion iomem_pciio;
     int irq_offset;
     union{
     uint8_t xbar2cfg_mem[0x200];
@@ -148,7 +150,23 @@ struct LS3BonitoState {
     uint64_t dummy[8]; 
 	   }  xbar1cfg_reg[8];
     };
+    union {
+    struct{
+    uint8_t sys_int[4];
+    uint8_t pci_int[4];
+    uint8_t matrix_int[2];
+    uint8_t lpc_int;
+    uint8_t mc[2];
+    uint8_t barrier;
+    uint8_t rsv;
+    uint8_t pci_perr;
+    uint8_t ht0_int[8];
+    uint8_t ht1_int[8];
+    uint32_t intisr;
+     };
+
     unsigned char int_route_reg[0x100];
+    };
     unsigned char ht_irq_reg[0x100];
     CPUMIPSState **env;
 
@@ -157,6 +175,7 @@ struct LS3BonitoState {
     MemoryRegion iomem_xbar2[8];
     MemoryRegion iomem_xbar1[8];
     MemoryRegion iomem_lowio;
+    int pci_introut[3];
 };
 
 
@@ -334,7 +353,7 @@ static void pci_ls3bonito_set_irq(void *opaque, int irq_num, int level)
 {
     	LS3BonitoState *pcihost = opaque;
 	struct ls3bonito_regs *d=&pcihost->regs;
-	int_route_reg
+	int_route_reg;
 	if(level)
 		d->intisr |=1<<(pcihost->irq_offset +irq_num);
 	else
@@ -663,6 +682,7 @@ static void ls3a_intctl_mem_writeb(void *opaque, hwaddr addr, uint32_t val)
 	break;
 	
 	case INT_ROUTER_REGS_PCI_INT0 ... INT_ROUTER_REGS_PCI_INT3:
+	*((uint8_t *)s->pci_introut + (a->base+addr-INT_ROUTER_REGS_PCI_INT0)) = val;
 	break;
 	case IO_CONTROL_REGS_INTISR ... IO_CONTROL_REGS_INTEDGE+3:
 	{
@@ -719,6 +739,7 @@ static void ls3a_intctl_mem_writel(void *opaque, hwaddr addr, uint32_t val)
 	ht_update_irq(s,0);
 	break;
 	case INT_ROUTER_REGS_PCI_INT0 ... INT_ROUTER_REGS_PCI_INT3:
+	*(uint32_t *)((char *)s->pci_introut + (a->base+addr-INT_ROUTER_REGS_PCI_INT0)) = val;
 	break;
 	case IO_CONTROL_REGS_INTISR ... IO_CONTROL_REGS_INTEDGE+3:
 	{
@@ -1382,23 +1403,26 @@ static int ls3bonito_pcihost_initfn(SysBusDevice *dev)
     pcihost = BONITO_PCI_HOST_BRIDGE(dev);
 
     memory_region_init(&pcihost->iomem_pcimem, "pcimem", 0x100000000);
-    memory_region_init(&pcihost->iomem_pciemem, "pcimem", 0x100000000);
+    memory_region_init(&pcihost->iomem_pciemem, "pciemem", 0x100000000);
+    memory_region_init(&pcihost->iomem_pcieio "pcieio", 0x10000);
+    memory_region_init(&pcihost->iomem_pciio "pciio", 0x10000);
     memory_region_init(&pcihost->iomem_lowio, "pcimem", 0x10000000);
 
-    phb->bus = pci_register_bus(DEVICE(dev), "pci",
+    phb->bus = pci_register_bus(DEVICE(dev), "pcie",
                                 pci_ls3a_set_irq, pci_ls3a_map_irq, pcihost,
-                                &pcihost->iomem_pcimem, get_system_io(),
+                                &pcihost->iomem_pciemem, &pcihost->pcieio,
                                 12<<3, 4);
 
     (phb+1)->bus = pci_register_bus(DEVICE(dev), "pci",
                                 pci_ls3bonito_set_irq, pci_ls3bonito_map_irq, pcihost,
-                                &pcihost->iomem_pcimem, get_system_io(),
+                                &pcihost->iomem_pcimem, &pcihost->pciio,
                                 12<<3, 4);
 
     dma_context_init(&pcihost->dma, &address_space_memory, pcidma_translate, NULL, NULL);
     pci_setup_iommu(phb->bus, pci_dma_context_fn, pcihost);
 
     memory_region_add_subregion(get_system_memory(), 0xe0000000000ULL, &pcihost->iomem_pciemem);
+    memory_region_add_subregion(&pcihost->iomem_pciemem, 0x0fdfc000000ULL, &pcihost->iomem_pcieio);
 
    /* ls3a pcie config ops */
    {
