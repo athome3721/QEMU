@@ -44,6 +44,7 @@
 #include "exec/address-spaces.h"
 #include "qdev-addr.h"
 #include "ide/internal.h"
+#include "loongson_bootparam.h"
 
 #define PHYS_TO_VIRT(x) ((x) | ~(target_ulong)0x7fffffff)
 
@@ -59,11 +60,16 @@ static const int ide_irq[2] = { 14, 15 };
 /* i8254 PIT is attached to the IRQ0 at PIC i8259 */
 
 static struct _loaderparams {
-	int ram_size;
-	const char *kernel_filename;
-	const char *kernel_cmdline;
-	const char *initrd_filename;
+    int ram_size;
+    const char *kernel_filename;
+    const char *kernel_cmdline;
+    const char *initrd_filename;
+    target_ulong a0,a1,a2;
 } loaderparams;
+
+static void *boot_params_buf;
+static void *boot_params_p;
+#define align(x) (((x)+15)&~15)
 
 static int clkreg[2];
 static MemoryRegion *ddrcfg_iomem;
@@ -135,121 +141,199 @@ typedef struct ResetData {
 	uint64_t vector;
 } ResetData;
 
-static int64_t load_kernel(void)
+
+#define BOOTPARAM_PHYADDR ((64 << 20))
+#define BOOTPARAM_ADDR (0x80000000+BOOTPARAM_PHYADDR)
+// should set argc,argv
+//env->gpr[REG][env->current_tc]
+static int set_bootparam(ram_addr_t initrd_offset,long initrd_size)
 {
-	int64_t entry, kernel_low, kernel_high;
-	long kernel_size, initrd_size, params_size;
+	char memenv[32];
+	char highmemenv[32];
+	const char *pmonenv[]={"cpuclock=200000000",memenv,highmemenv};
+	int i;
+	long params_size;
 	char *params_buf;
-	ram_addr_t initrd_offset;
+	unsigned int *parg_env;
 	int ret;
-
-	if(getenv("BOOTROM"))
-	{
-		initrd_size = load_image_targphys(loaderparams.kernel_filename,
-				strtoul(getenv("BOOTROM"),0,0),ram_size); //qemu_get_ram_ptr
-		return 0;
-	}
-	kernel_size = load_elf(loaderparams.kernel_filename, cpu_mips_kseg0_to_phys, NULL,
-			(uint64_t *)&entry, (uint64_t *)&kernel_low,
-			(uint64_t *)&kernel_high,0,ELF_MACHINE, 1);
-	if (kernel_size >= 0) {
-		if ((entry & ~0x7fffffffULL) == 0x80000000)
-			entry = (int32_t)entry;
-	} else {
-		fprintf(stderr, "qemu: could not load kernel '%s'\n",
-				loaderparams.kernel_filename);
-		exit(1);
-	}
-
-	/* load initrd */
-	initrd_size = 0;
-	initrd_offset = 0;
-	if (loaderparams.initrd_filename) {
-		initrd_size = get_image_size (loaderparams.initrd_filename);
-		if (initrd_size > 0) {
-			initrd_offset = (kernel_high + ~TARGET_REALPAGE_MASK) & TARGET_REALPAGE_MASK;
-			if (initrd_offset + initrd_size > ram_size) {
-				fprintf(stderr,
-						"qemu: memory too small for initial ram disk '%s'\n",
-						loaderparams.initrd_filename);
-				exit(1);
-			}
-			initrd_size = load_image_targphys(loaderparams.initrd_filename,
-					initrd_offset,ram_size-initrd_offset); //qemu_get_ram_ptr
-		}
-		if (initrd_size == (target_ulong) -1) {
-			fprintf(stderr, "qemu: could not load initial ram disk '%s'\n",
-					loaderparams.initrd_filename);
-			exit(1);
-		}
-	}
 
 	/* Store command line.  */
 	params_size = 264;
 	params_buf = g_malloc(params_size);
 
+	parg_env=(void *)params_buf;
 
+	/*
+	 * pram buf like this:
+	 *argv[0] argv[1] 0 env[0] env[1] ...env[i] ,0, argv[0]'s data , argv[1]'s data ,env[0]'data,...,env[i]'s dat,0
+	 */
 
-#define BOOTPARAM_PHYADDR ((64 << 20) - 264)
-#define BOOTPARAM_ADDR (0x80000000+BOOTPARAM_PHYADDR)
-	// should set argc,argv
-	//env->gpr[REG][env->current_tc]
-	{
-		char memenv[32];
-		char highmemenv[32];
-		const char *pmonenv[]={"cpuclock=200000000",memenv,highmemenv};
-		int i;
-		unsigned int *parg_env=(void *)params_buf;
-		/*
-		 * pram buf like this:
-		 *argv[0] argv[1] 0 env[0] env[1] ...env[i] ,0, argv[0]'s data , argv[1]'s data ,env[0]'data,...,env[i]'s dat,0
-		 */
+	//*count user special env
+	for(ret=0,i=0;environ[i];i++)
+		if(!strncmp(environ[i],"ENV_",4))ret+=4;
 
-		//*count user special env
-		for(ret=0,i=0;environ[i];i++)
-			if(!strncmp(environ[i],"ENV_",4))ret+=4;
-
-		//jump over argv and env area
-		ret +=(3+sizeof(pmonenv)/sizeof(char *)+1)*4;
-		//argv0
-		*parg_env++=BOOTPARAM_ADDR+ret;
-		ret +=1+snprintf(params_buf+ret,256-ret,"g");
-		//argv1
-		*parg_env++=BOOTPARAM_ADDR+ret;
-		if (initrd_size > 0) {
-			ret +=1+snprintf(params_buf+ret,256-ret, "rd_start=0x" TARGET_FMT_lx " rd_size=%li %s",
-					PHYS_TO_VIRT((uint32_t)initrd_offset),
-					initrd_size, loaderparams.kernel_cmdline);
-		} else {
-			ret +=1+snprintf(params_buf+ret, 256-ret, "%s", loaderparams.kernel_cmdline);
-		}
-		//argv2
-		*parg_env++=0;
-
-		//env
-		sprintf(memenv,"memsize=%d",loaderparams.ram_size>0x10000000?256:(loaderparams.ram_size>>20));
-		sprintf(highmemenv,"highmemsize=%d",loaderparams.ram_size>0x10000000?(loaderparams.ram_size>>20)-256:0);
-
-
-		for(i=0;i<sizeof(pmonenv)/sizeof(char *);i++)
-		{
-			*parg_env++=BOOTPARAM_ADDR+ret;
-			ret +=1+snprintf(params_buf+ret,256-ret,"%s",pmonenv[i]);
-		}
-
-		for(i=0;environ[i];i++)
-		{
-			if(!strncmp(environ[i],"ENV_",4)){
-				*parg_env++=BOOTPARAM_ADDR+ret;
-				ret +=1+snprintf(params_buf+ret,256-ret,"%s",&environ[i][4]);
-			}
-		}
-		*parg_env++=0;
-		rom_add_blob_fixed("params", params_buf, params_size,
-				BOOTPARAM_PHYADDR);
-
+	//jump over argv and env area
+	ret +=(3+sizeof(pmonenv)/sizeof(char *)+1)*4;
+	//argv0
+	*parg_env++=BOOTPARAM_ADDR+ret;
+	ret +=1+snprintf(params_buf+ret,256-ret,"g");
+	//argv1
+	*parg_env++=BOOTPARAM_ADDR+ret;
+	if (initrd_size > 0) {
+		ret +=1+snprintf(params_buf+ret,256-ret, "rd_start=0x" TARGET_FMT_lx " rd_size=%li %s",
+				PHYS_TO_VIRT((uint32_t)initrd_offset),
+				initrd_size, loaderparams.kernel_cmdline);
+	} else {
+		ret +=1+snprintf(params_buf+ret, 256-ret, "%s", loaderparams.kernel_cmdline);
 	}
-	return entry;
+	//argv2
+	*parg_env++=0;
+
+	//env
+	sprintf(memenv,"memsize=%d",loaderparams.ram_size>0x10000000?256:(loaderparams.ram_size>>20));
+	sprintf(highmemenv,"highmemsize=%d",loaderparams.ram_size>0x10000000?(loaderparams.ram_size>>20)-256:0);
+
+
+	for(i=0;i<sizeof(pmonenv)/sizeof(char *);i++)
+	{
+		*parg_env++=BOOTPARAM_ADDR+ret;
+		ret +=1+snprintf(params_buf+ret,256-ret,"%s",pmonenv[i]);
+	}
+
+	for(i=0;environ[i];i++)
+	{
+		if(!strncmp(environ[i],"ENV_",4)){
+			*parg_env++=BOOTPARAM_ADDR+ret;
+			ret +=1+snprintf(params_buf+ret,256-ret,"%s",&environ[i][4]);
+		}
+	}
+	*parg_env++=0;
+	rom_add_blob_fixed("params", params_buf, params_size,
+			BOOTPARAM_PHYADDR);
+	loaderparams.a0 = 2;
+	loaderparams.a1 = (target_ulong)0xffffffff80000000ULL+BOOTPARAM_PHYADDR;
+	loaderparams.a2 = (target_ulong)0xffffffff80000000ULL+BOOTPARAM_PHYADDR +12;
+	
+return 0;
+}
+
+static int set_bootparam1(ram_addr_t initrd_offset,long initrd_size)
+{
+	char memenv[32];
+	char highmemenv[32];
+	long params_size;
+	void *params_buf;
+	unsigned int *parg_env;
+	int ret;
+
+	/* Store command line.  */
+	params_size = 0x100000;
+	params_buf = g_malloc(params_size);
+
+	parg_env=(void *)params_buf;
+
+	/*
+	 * pram buf like this:
+	 *argv[0] argv[1] 0 env[0] env[1] ...env[i] ,0, argv[0]'s data , argv[1]'s data ,env[0]'data,...,env[i]'s dat,0
+	 */
+
+	//jump over argv and env area
+	ret =(3+1)*4;
+	//argv0
+	*parg_env++=BOOTPARAM_ADDR+ret;
+	ret +=1+snprintf(params_buf+ret,256-ret,"g");
+	//argv1
+	*parg_env++=BOOTPARAM_ADDR+ret;
+	if (initrd_size > 0) {
+		ret +=1+snprintf(params_buf+ret,256-ret, "rd_start=0x" TARGET_FMT_lx " rd_size=%li %s",
+				PHYS_TO_VIRT((uint32_t)initrd_offset),
+				initrd_size, loaderparams.kernel_cmdline);
+	} else {
+		ret +=1+snprintf(params_buf+ret, 256-ret, "%s", loaderparams.kernel_cmdline);
+	}
+	//argv2
+	*parg_env++=0;
+
+	//env
+
+	sprintf(memenv,"%d",loaderparams.ram_size>0x10000000?256:(loaderparams.ram_size>>20));
+	sprintf(highmemenv,"%d",loaderparams.ram_size>0x10000000?(loaderparams.ram_size>>20)-256:0);
+	setenv("memsize", memenv, 1);
+	setenv("highmemsize", highmemenv, 1);
+
+	ret = ((ret+32)&~31);
+
+	boot_params_buf = (void *)(params_buf+ret);
+	boot_params_p = boot_params_buf + align(sizeof(struct boot_params));
+
+	init_boot_param(boot_params_buf);
+	printf("param len=%ld\n", boot_params_p-params_buf);
+
+	rom_add_blob_fixed("params", params_buf, params_size,
+			BOOTPARAM_PHYADDR);
+	loaderparams.a0 = 2;
+	loaderparams.a1 = (target_ulong)0xffffffff80000000ULL+BOOTPARAM_PHYADDR;
+	loaderparams.a2 = (target_ulong)0xffffffff80000000ULL+BOOTPARAM_PHYADDR + ret;
+        printf("env %x\n", BOOTPARAM_PHYADDR + ret);
+return 0;
+}
+
+
+static int64_t load_kernel(void)
+{
+    int64_t entry, kernel_low, kernel_high;
+    long kernel_size, initrd_size;
+    ram_addr_t initrd_offset;
+
+	if(getenv("BOOTROM"))
+	{
+            initrd_size = load_image_targphys(loaderparams.kernel_filename,
+                                     strtoul(getenv("BOOTROM"),0,0),ram_size); //qemu_get_ram_ptr
+	return 0;
+	}
+	kernel_size = load_elf(loaderparams.kernel_filename, cpu_mips_kseg0_to_phys, NULL,
+                           (uint64_t *)&entry, (uint64_t *)&kernel_low,
+                           (uint64_t *)&kernel_high,0,ELF_MACHINE, 1);
+    if (kernel_size >= 0) {
+        if ((entry & ~0x7fffffffULL) == 0x80000000)
+            entry = (int32_t)entry;
+    } else {
+        fprintf(stderr, "qemu: could not load kernel '%s'\n",
+                loaderparams.kernel_filename);
+        exit(1);
+    }
+
+    /* load initrd */
+    initrd_size = 0;
+    initrd_offset = 0;
+    if (loaderparams.initrd_filename) {
+        initrd_size = get_image_size (loaderparams.initrd_filename);
+        if (initrd_size > 0) {
+            initrd_offset = (kernel_high + ~TARGET_REALPAGE_MASK) & TARGET_REALPAGE_MASK;
+            if (initrd_offset + initrd_size > ram_size) {
+                fprintf(stderr,
+                        "qemu: memory too small for initial ram disk '%s'\n",
+                        loaderparams.initrd_filename);
+                exit(1);
+            }
+	    if(getenv("INITRD_OFFSET")) initrd_offset=strtoul(getenv("INITRD_OFFSET"),0,0);
+            initrd_size = load_image_targphys(loaderparams.initrd_filename,
+                                     initrd_offset,ram_size-initrd_offset); //qemu_get_ram_ptr
+        }
+        if (initrd_size == (target_ulong) -1) {
+            fprintf(stderr, "qemu: could not load initial ram disk '%s'\n",
+                    loaderparams.initrd_filename);
+            exit(1);
+        }
+    }
+
+
+	if(getenv("OLDENV"))
+	 set_bootparam(initrd_offset, initrd_size);
+	else
+	 set_bootparam1(initrd_offset, initrd_size);
+	
+return entry;
 }
 static void main_cpu_reset(void *opaque)
 {
@@ -257,11 +341,11 @@ static void main_cpu_reset(void *opaque)
 	CPUMIPSState *env = &s->cpu->env;
 
 	cpu_reset(CPU(s->cpu));
-	env->CP0_IntCtl = 0xfc000000;
+	//env->CP0_IntCtl = 0xfc000000;
 	env->active_tc.PC = s->vector;
-	env->active_tc.gpr[4]=2;
-	env->active_tc.gpr[5]=0x80000000+BOOTPARAM_PHYADDR;
-	env->active_tc.gpr[6]=0x80000000+BOOTPARAM_PHYADDR +12;
+	env->active_tc.gpr[4]=loaderparams.a0;
+	env->active_tc.gpr[5]=loaderparams.a1;
+	env->active_tc.gpr[6]=loaderparams.a2;
 }
 
 
@@ -276,6 +360,26 @@ static int board_map_irq(int bus,int dev,int func,int pin)
 static const int sector_len = 32 * 1024;
 
 static PCIBus *pcibus_ls2h_init(qemu_irq *pic, int (*board_map_irq)(int bus,int dev,int func,int pin));
+
+struct ls2h_dma_struc {
+MemoryRegion iomem;
+DMAContext dma;
+AddressSpace as;
+} ls2h_dma;
+
+#if 0
+static int ls2hdma_translate(DMAContext *dma,
+                               dma_addr_t addr,
+                               hwaddr *paddr,
+                               hwaddr *len,
+                               DMADirection dir)
+{
+	dma->as = &address_space_memory;
+	*paddr = addr&0x1fffffff;
+    return 0;
+}
+#endif
+
 
 static void mips_ls2h_init (QEMUMachineInitArgs *args)
 {
@@ -326,6 +430,26 @@ static void mips_ls2h_init (QEMUMachineInitArgs *args)
 
 	memory_region_add_subregion(address_space_mem, 0, ram);
 
+#if 1
+/*fix me
+ current ahci code use address_space_memory
+*/
+	{
+	MemoryRegion *ram1 = g_new(MemoryRegion, 1);
+	memory_region_init_alias(ram1, "ls1a_dc0", ram, 0, ram_size);
+	memory_region_add_subregion(address_space_mem, 0x40000000, ram1);
+	}
+#else
+	memory_region_init(&ls2h_dma.iomem, "system", ram_size);
+	address_space_init(&ls2h_dma.as, &ls2h_dma.iomem);
+	address_space_memory.name = "ls2h dma memory";
+	dma_context_init(&ls2h_dma.dma, &ls2h_dma.as, ls2hdma_translate, NULL, NULL);
+	MemoryRegion *ram1 = g_new(MemoryRegion, 1);
+	memory_region_init_alias(ram1, "dma ram", ram, 0, ram_size);
+	memory_region_add_subregion(&ls2h_dma.iomem, 0, ram1);
+	memory_region_add_subregion(address_space_mem, 0x40000000, &ls2h_dma.iomem);
+#endif
+
 	//memory_region_init_io(iomem, &mips_qemu_ops, NULL, "mips-qemu", 0x10000);
 	//memory_region_add_subregion(address_space_mem, 0x1fbf0000, iomem);
 
@@ -375,6 +499,7 @@ static void mips_ls2h_init (QEMUMachineInitArgs *args)
 	cpu_mips_irq_init_cpu(env);
 	cpu_mips_clock_init(env);
 
+
 	/* Register 64 KB of IO space at 0x1f000000 */
 	isa_mmio_init(0x1ff00000, 0x00010000);
 	isa_mem_base = 0x10000000;
@@ -396,9 +521,9 @@ static void mips_ls2h_init (QEMUMachineInitArgs *args)
 	if (serial_hds[3])
 		serial_mm_init(address_space_mem, 0x1fe83000, 0,ls2h_irq[5],115200,serial_hds[3], DEVICE_NATIVE_ENDIAN);
 
-#if 0
-	sysbus_create_simple("ls2h_fb", 0x1fe50000, NULL);
+	sysbus_create_simple("ls1a_fb", 0x1fe50000, NULL);
 
+#if 0
 	{
 		MemoryRegion *i8042 = g_new(MemoryRegion, 1);
 		i8042_mm_init(ls2h_irq[12], ls2h_irq[11], i8042, 0x10, 0x4);
@@ -422,12 +547,14 @@ static void mips_ls2h_init (QEMUMachineInitArgs *args)
 
 		//dev = sysbus_create_simple("sysbus-ohci", 0x1fe08000, ls2h_irq1[1]);
 	}
+
 	{
 		DeviceState *dev;
 		BusState *idebus[4];
 		DriveInfo *hd;
 		dev = qdev_create(NULL, "sysbus-ahci");
-		qdev_prop_set_uint32(dev, "num-ports", 2);
+		qdev_prop_set_uint32(dev, "num-ports", 1);
+		//qdev_prop_set_ptr(dev, "dma", &ls2h_dma.dma);
 		qdev_init_nofail(dev);
 		sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, 0x1fe30000);
 		sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0, ls2h_irq1[5]);
@@ -442,6 +569,8 @@ static void mips_ls2h_init (QEMUMachineInitArgs *args)
 				qdev_init_nofail(dev);
 		}
 	}
+
+
 
 #if 0
 	sysbus_create_simple("ls2h_acpi",0x1fe7c000, ls2h_irq[0]);
@@ -467,7 +596,7 @@ static void mips_ls2h_init (QEMUMachineInitArgs *args)
 		DeviceState *dev,*dev1;
 		void *bus;
 		qemu_irq cs_line;
-		dev=sysbus_create_simple("ls1a_spi",0x1fe80000, ls2h_irq[8]);
+		dev=sysbus_create_simple("ls1a_spi",0x1fe70000, ls2h_irq[8]);
 		bus = qdev_get_child_bus(dev, "ssi");
 		if(flash_dinfo)
 		{
@@ -518,11 +647,11 @@ static void mips_ls2h_init (QEMUMachineInitArgs *args)
 		sysbus_mmio_map(s, 0, 0x1fd00100);
 	}
 
-#if 0
+#if 1
 	{
 		DeviceState *dev;
 		SysBusDevice *s;
-		dev = qdev_create(NULL, "ls2h_nand");
+		dev = qdev_create(NULL, "ls1a_nand");
 		qdev_init_nofail(dev);
 		s = SYS_BUS_DEVICE(dev);
 		sysbus_mmio_map(s, 0, 0x1fee0000);
@@ -905,3 +1034,5 @@ static void bonito_register_types(void)
 }
 
 type_init(bonito_register_types)
+#define LOONGSON_2H
+#include "loongson_bootparam.c"
