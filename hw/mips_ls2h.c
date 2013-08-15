@@ -405,9 +405,9 @@ static void mips_ls2h_init (QEMUMachineInitArgs *args)
 	/* init CPUs */
 	if (cpu_model == NULL) {
 #ifdef TARGET_MIPS64
-		cpu_model = "godson3";
+		cpu_model = "godson2h";
 #else
-		cpu_model = "godson3";
+		cpu_model = "godson2h";
 #endif
 	}
 
