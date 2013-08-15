@@ -328,7 +328,7 @@ static void mips_iie_init (QEMUMachineInitArgs *args)
 	cpu_mips_irq_init_cpu(env);
 	cpu_mips_clock_init(env);
 
-	iie_irq =iie_intctl_init(get_system_memory(), 0x1Fd20000, env->irq[2]);
+	iie_irq =iie_intctl_init(get_system_memory(), 0x1fd20000, env->irq[2]);
 
 
 	if (serial_hds[0])
@@ -470,16 +470,12 @@ typedef struct GS232_INTCTLState {
 	uint32_t irq_pr[1]; 
 	uint32_t irq_vector_default; 
 
-	uint32_t intreg_edge;
-	uint32_t intreg_steer;
-	uint32_t intreg_pol;
-	uint32_t reserve3;
-
 	qemu_irq cpu_irq;
 	uint32_t intreg_pending;
+	uint32_t pil_out;
 } GS232_INTCTLState;
 
-#define INTCTL_SIZE 0x18
+#define INTCTL_SIZE 0x100
 #define INTCTLM_MAXADDR 0x13
 #define INTCTLM_SIZE (INTCTLM_MAXADDR + 1)
 #define INTCTLM_MASK 0x1f
@@ -501,28 +497,34 @@ static uint64_t iie_intctl_mem_readl(void *opaque, hwaddr addr, unsigned size)
 	saddr = addr >> 2;
 	switch (saddr) {
 		case 6: //rawstatus
-			ret = s->inten[0] & ~s->intmask[0];
+			ret =  s->intreg_pending;
 			break;
-		case 7:
-			ret = s->inten[1] & ~s->intmask[1];
+		case 7: //rawstatus
+			ret =  s->intreg_pending;
 			break;
-		case 8: //maskstatus
-			ret = s->inten[0] & ~s->intmask[0];
+		case 8: //status
+			ret = s->inten[0] & s->intreg_pending;
 			break;
-		case 9: //maskstatus
-			ret = s->inten[1] & ~s->intmask[1];
+		case 9: //status
+			ret = s->inten[1] & s->intreg_pending;
 			break;
-		case 10: //forcestatus
-			ret = s->inten[0] & ~s->intmask[0];
+		case 10: //maskstatus
+			ret = ~s->intmask[0] & s->intreg_pending;
 			break;
-		case 11: //forcestatus
-			ret = s->inten[1] & ~s->intmask[1];
+		case 11: //maskstatus
+			ret = ~s->intmask[1] & s->intreg_pending;
+			break;
+		case 12: //finalstatus
+			ret = s->inten[0] & ~s->intmask[0] & s->intreg_pending;
+			break;
+		case 13: //finalstatus
+			ret = s->inten[1] & ~s->intmask[1] & s->intreg_pending;
 			break;
 		default:
-			ret = 0;
+			ret = *(int *)s;
 			break;
 	}
-	DPRINTF("read cpu %d reg 0x" TARGET_FMT_plx " = %x\n", cpu, addr, ret);
+	DPRINTF("read reg 0x" TARGET_FMT_plx " = %x\n", addr, ret);
 
 	return ret;
 }
@@ -533,14 +535,12 @@ static void iie_intctl_mem_writel(void *opaque, hwaddr addr, uint64_t val, unsig
 	uint32_t saddr;
 
 	saddr = addr >> 2;
+	if(saddr>=6 && saddr<14) return;
 	if(saddr>14) return;
-	//printf("write reg 0x" TARGET_FMT_plx " %x= %x\n", addr, saddr, (unsigned int)val);
 	switch (saddr) {
-		case 0: //isr
-			//iie_check_interrupts(s);
-			break;
 		default:
 			*(uint32_t *)((void *)s+addr) = val;
+			iie_check_interrupts(s);
 			break;
 	}
 }
@@ -558,13 +558,17 @@ static void iie_check_interrupts(void *opaque)
 	uint32_t pil_pending;
 
 
-	pil_pending = s->inten[0] & ~s->intmask[0];
+	pil_pending = s->inten[0] & ~s->intmask[0] & s->intreg_pending;
+
 
 	if (pil_pending ) {
-		qemu_irq_raise(s->cpu_irq);
+		if (!s->pil_out)
+			qemu_irq_raise(s->cpu_irq);
 	} else {
+		if (s->pil_out)
 			qemu_irq_lower(s->cpu_irq);
 	}
+	s->pil_out = pil_pending;
 	DPRINTF("pending %x \n", pil_pending);
 }
 
@@ -577,11 +581,13 @@ static void iie_set_irq(void *opaque, int irq, int level)
 	GS232_INTCTLState *s = opaque;
 	uint32_t mask = 1 << irq;
 
-	DPRINTF("Set cpu %d irq %d level %d\n", s->target_cpu, irq,
+	DPRINTF("Set irq %d level %d\n", irq,
 			level);
 	if (level) {
+	if(!s->intreg_pending)
 		s->intreg_pending |= mask;
 	} else {
+	if(s->intreg_pending)
 		s->intreg_pending &= ~mask;
 	}
 	iie_check_interrupts(s);
