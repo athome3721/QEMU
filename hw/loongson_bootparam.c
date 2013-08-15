@@ -3,24 +3,24 @@
 
 extern void (*poweroff_pt)(void);
 extern void (*reboot_pt)(void);
-void init_efi(struct efi *efi);
-void init_reset_system(struct efi_reset_system_t *reset);
-void init_smbios(struct smbios_tables *smbios);
-void init_loongson_params(struct loongson_params *lp);
-struct efi_memory_map_loongson * init_memory_map(void *);
-struct efi_cpuinfo_loongson *init_cpu_info(void *);
-struct system_loongson *init_system_loongson(void *);
-struct irq_source_routing_table *init_irq_source(void *);
-struct interface_info *init_interface_info(void *);
+static void init_efi(struct efi *efi);
+static void init_reset_system(struct efi_reset_system_t *reset);
+static void init_smbios(struct smbios_tables *smbios);
+static void init_loongson_params(struct loongson_params *lp);
+static struct efi_memory_map_loongson * init_memory_map(void *);
+static struct efi_cpuinfo_loongson *init_cpu_info(void *);
+static struct system_loongson *init_system_loongson(void *);
+static struct irq_source_routing_table *init_irq_source(void *);
+static struct interface_info *init_interface_info(void *);
 static struct board_devices *board_devices_info(void *);
-struct loongson_special_attribute *init_special_info(void *);
+static struct loongson_special_attribute *init_special_info(void *);
 
 #ifdef RS780E
 extern unsigned char vgarom[];
 extern struct pci_device *vga_dev;
 #endif
 
-int init_boot_param(struct boot_params *bp)
+static int init_boot_param(struct boot_params *bp)
 {
   
   init_efi(&(bp->efi));
@@ -97,17 +97,24 @@ struct efi_memory_map_loongson * init_memory_map(void *g_map)
   //map->memsz_reserved = 16;
 
 #if 1
- 
+#ifdef LOONGSON_2H
+  emap->map[0].node_id = 0;
+  //strcpy(emap->map[0].mem_name, "node0_low");
+  emap->map[0].mem_type = 1;
+  emap->map[0].mem_start = 0x0;
+  emap->map[0].mem_size = atoi(getenv("memsize"));
+#else 
   emap->map[0].node_id = 0;
   //strcpy(emap->map[0].mem_name, "node0_low");
   emap->map[0].mem_type = 1;
   emap->map[0].mem_start = 0x01000000;
   emap->map[0].mem_size = atoi(getenv("memsize"));
+#endif
 
   emap->map[1].node_id = 0;
   //strcpy(emap->map[1].mem_name, "node0_high");
   emap->map[1].mem_type = 2;
-#ifdef LOONGSON_3A2H
+#if defined(LOONGSON_3A2H) || defined(LOONGSON_2H)
   emap->map[1].mem_start = 0x110000000;
 #else
   emap->map[1].mem_start = 0x90000000;
@@ -118,11 +125,18 @@ struct efi_memory_map_loongson * init_memory_map(void *g_map)
   emap->map[2].node_id = 0;
   emap->map[2].mem_type = 10;
   emap->map[2].mem_start = SMBIOS_PHYSICAL_ADDRESS;
- 
+
+#ifdef LOONGSON_2H 
+  emap->map[3].node_id = 0;
+  emap->map[3].mem_type = 3;
+  emap->map[3].mem_start = 0xf000000;
+  emap->map[3].mem_size = 16;
+#else
   emap->map[3].node_id = 0;
   emap->map[3].mem_type = 3;
   emap->map[3].mem_start = SMBIOS_PHYSICAL_ADDRESS & 0x0fffffff;
   emap->map[3].mem_size = SMBIOS_SIZE_LIMIT >> 20;
+#endif
 
 #if (defined(MULTI_CHIP)) || (defined(LOONGSON_3BSINGLE))
 
@@ -203,19 +217,19 @@ struct efi_memory_map_loongson * init_memory_map(void *g_map)
 #else
   #define PRID_IMP_LOONGSON    0x6306
 #endif
- enum loongson_cpu_type cputype = Loongson_3B;
+static enum loongson_cpu_type cputype = Loongson_3B;
 #endif
 #ifdef LOONGSON_3BSERVER
   #define PRID_IMP_LOONGSON    0x6306
-  enum loongson_cpu_type cputype = Loongson_3B;
+static  enum loongson_cpu_type cputype = Loongson_3B;
 #endif
-#if  defined ( LOONGSON_3ASINGLE) || defined ( LOONGSON_3A2H)
+#if  defined ( LOONGSON_3ASINGLE) || defined ( LOONGSON_3A2H) || defined (LOONGSON_2H)
   #define PRID_IMP_LOONGSON    0x6305
-  enum loongson_cpu_type cputype = Loongson_3A;
+static  enum loongson_cpu_type cputype = Loongson_3A;
 #endif
 #ifdef LOONGSON_3ASERVER
   #define PRID_IMP_LOONGSON    0x6305
-  enum loongson_cpu_type cputype = Loongson_3A;
+static  enum loongson_cpu_type cputype = Loongson_3A;
 #endif
 
 struct efi_cpuinfo_loongson *init_cpu_info(void *g_cpuinfo_loongson)
@@ -243,6 +257,11 @@ struct efi_cpuinfo_loongson *init_cpu_info(void *g_cpuinfo_loongson)
 #ifdef LOONGSON_3A2H
   c->total_node = 1;
   c->nr_cpus = 4;
+#endif
+
+#ifdef LOONGSON_2H
+  c->total_node = 1;
+  c->nr_cpus = 1;
 #endif
 
 #ifdef LOONGSON_3ASINGLE
@@ -276,6 +295,10 @@ struct system_loongson *init_system_loongson(void *g_sysitem)
   s->sing_double_channel = 1;
 #endif
 #ifdef LOONGSON_3A2H
+  s->ccnuma_smp = 0;
+  s->sing_double_channel = 1;
+#endif
+#ifdef LOONGSON_2H
   s->ccnuma_smp = 0;
   s->sing_double_channel = 1;
 #endif
@@ -340,6 +363,9 @@ static struct board_devices *board_devices_info(void *g_board)
  
 #ifdef LOONGSON_3ASINGLE
   strcpy(bd->name,"Loongson-3A-780E-1w-V1.03-demo");
+#endif
+#ifdef LOONGSON_2H
+  strcpy(bd->name,"Loongson-2H-SOC-1w-V0.1-demo");
 #endif
 #ifdef LOONGSON_3A2H
   strcpy(bd->name,"Loongson-3A-2H-1w-V1.00-demo");

@@ -51,7 +51,7 @@ struct efi_systab {
 
 enum loongson_cpu_type
 {
-	Loongson_2F,Loongson_2E, Loongson_3A, Loongson_3B,Loongson_1A,Loongson_1B
+	Loongson_2F,Loongson_2E, Loongson_3A, Loongson_3B,Loongson_1A,Loongson_1B,loongson_2H
 };
 
 struct efi_cpuinfo_loongson {
@@ -184,6 +184,5 @@ struct boot_params{
 #define SMBIOS_PHYSICAL_ADDRESS 0x8fffe000
 #define SMBIOS_SIZE_LIMIT 0x800
 
-void loongson_smbios_init(void);
-int init_boot_param(struct boot_params *bp);
+static int init_boot_param(struct boot_params *bp);
 #endif
