@@ -203,6 +203,8 @@ static void main_cpu_reset(void *opaque)
 static int board_map_irq_ls1a(int bus,int dev,int func,int pin)
 {
 int irq_num=pin;
+	/*ls1a is on slot 9*/
+	if(dev == 9) irq_num = 3;
 	if(dev>=14 && dev<=16)
      irq_num=((dev-14)+pin)%4;
 
