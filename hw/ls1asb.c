@@ -13,8 +13,8 @@
 #include "i2c.h"
 #include "exec/address-spaces.h"
 
-#define PCI_VENDOR_ID_LS1A 0x126f
-#define PCI_DEVICE_ID_LS1A 0x501
+#define PCI_VENDOR_ID_LS1A 0x104a
+#define PCI_DEVICE_ID_LS1A 0x0
 
 typedef struct pcilocal{
 	unsigned int pcimap;
@@ -246,8 +246,8 @@ static int ls1a_initfn(PCIDevice *dev)
     struct LS1APciState *d;
     qemu_irq *ls1a_irq,*ls1a_irq1;
     sbstat = d = DO_UPCAST(struct LS1APciState, card, dev);
-    pci_config_set_vendor_id(d->card.config,0x126f);
-    pci_config_set_device_id(d->card.config,0x0501);
+    pci_config_set_vendor_id(d->card.config, PCI_VENDOR_ID_LS1A);
+    pci_config_set_device_id(d->card.config, PCI_DEVICE_ID_LS1A);
     d->card.config[PCI_COMMAND] = PCI_COMMAND_IO | PCI_COMMAND_MEMORY |
                                   PCI_COMMAND_MASTER;
 
