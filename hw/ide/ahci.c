@@ -172,19 +172,18 @@ static void ahci_trigger_irq(AHCIState *s, AHCIDevice *d,
     ahci_check_irq(s);
 }
 
-static void map_page(uint8_t **ptr, uint64_t addr, uint32_t wanted)
+static void map_page(AHCIState *s, uint8_t **ptr, uint64_t addr, uint32_t wanted)
 {
     hwaddr len = wanted;
+	    if (*ptr) {
+		dma_memory_unmap(s->dma, *ptr, len, DMA_DIRECTION_FROM_DEVICE, len);
+	    }
 
-    if (*ptr) {
-        cpu_physical_memory_unmap(*ptr, len, 1, len);
-    }
-
-    *ptr = cpu_physical_memory_map(addr, &len, 1);
-    if (len < wanted) {
-        cpu_physical_memory_unmap(*ptr, len, 1, len);
-        *ptr = NULL;
-    }
+	    *ptr = dma_memory_map(s->dma, addr, &len, DMA_DIRECTION_FROM_DEVICE);
+	    if (len < wanted) {
+		dma_memory_unmap(s->dma, *ptr, len, DMA_DIRECTION_FROM_DEVICE, len);
+		*ptr = NULL;
+	    }
 }
 
 static void  ahci_port_write(AHCIState *s, int port, int offset, uint32_t val)
@@ -195,24 +194,24 @@ static void  ahci_port_write(AHCIState *s, int port, int offset, uint32_t val)
     switch (offset) {
         case PORT_LST_ADDR:
             pr->lst_addr = val;
-            map_page(&s->dev[port].lst,
+            map_page(s, &s->dev[port].lst,
                      ((uint64_t)pr->lst_addr_hi << 32) | pr->lst_addr, 1024);
             s->dev[port].cur_cmd = NULL;
             break;
         case PORT_LST_ADDR_HI:
             pr->lst_addr_hi = val;
-            map_page(&s->dev[port].lst,
+            map_page(s, &s->dev[port].lst,
                      ((uint64_t)pr->lst_addr_hi << 32) | pr->lst_addr, 1024);
             s->dev[port].cur_cmd = NULL;
             break;
         case PORT_FIS_ADDR:
             pr->fis_addr = val;
-            map_page(&s->dev[port].res_fis,
+            map_page(s, &s->dev[port].res_fis,
                      ((uint64_t)pr->fis_addr_hi << 32) | pr->fis_addr, 256);
             break;
         case PORT_FIS_ADDR_HI:
             pr->fis_addr_hi = val;
-            map_page(&s->dev[port].res_fis,
+            map_page(s, &s->dev[port].res_fis,
                      ((uint64_t)pr->fis_addr_hi << 32) | pr->fis_addr, 256);
             break;
         case PORT_IRQ_STAT:
@@ -1237,9 +1236,9 @@ static int ahci_state_post_load(void *opaque, int version_id)
         ad = &s->dev[i];
         AHCIPortRegs *pr = &ad->port_regs;
 
-        map_page(&ad->lst,
+        map_page(s, &ad->lst,
                  ((uint64_t)pr->lst_addr_hi << 32) | pr->lst_addr, 1024);
-        map_page(&ad->res_fis,
+        map_page(s, &ad->res_fis,
                  ((uint64_t)pr->fis_addr_hi << 32) | pr->fis_addr, 256);
         /*
          * All pending i/o should be flushed out on a migrate. However,
