@@ -213,6 +213,7 @@ static int ls1adma_translate(LS1APciState *s, DMAContext *dma,
                                DMADirection dir)
 {
     uint32_t pcimap = s->pcilocalreg.pcimap;
+    hwaddr plen = *len;
 	//dma_memory_map
     	//dma_memory_rw
         //address_space_rw(dma->as, paddr, buf, plen, dir == DMA_DIRECTION_FROM_DEVICE);
@@ -235,9 +236,10 @@ static int ls1adma_translate(LS1APciState *s, DMAContext *dma,
 	{
 	dma->as = &s->as;
 	*paddr = addr;
-	*len = 0x10000000;
 	}
 
+	if(*len > plen)
+	*len = plen;
 
     return 0;
 }
