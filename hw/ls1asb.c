@@ -236,10 +236,14 @@ static int ls1adma_translate(LS1APciState *s, DMAContext *dma,
 	{
 	dma->as = &s->as;
 	*paddr = addr;
+	*len = 0x10000000;
 	}
 
-	if(*len > plen)
-	*len = plen;
+	if(plen && *len > plen)
+	{
+       *len = plen;
+	}
+
 
     return 0;
 }
