@@ -1883,7 +1883,7 @@ static ssize_t gmac_do_receive(NetClientState *nc, const uint8_t *buf, size_t si
 	}
 	else
 	{
-	 s->receive_stop = 1;
+	 //s->receive_stop = 1;
 	 s->dma.DmaStatus |= DmaIntRxNoBuffer; 
 	gmac_check_irq(s);
 	}
