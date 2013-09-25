@@ -26,7 +26,11 @@ typedef struct pcilocal{
 
 typedef struct LS1APciState {
 	PCIDevice card;
-	DMAContext dma;
+	DMAContext dma_ehci;
+	DMAContext dma_ohci;
+	DMAContext dma_ahci;
+	DMAContext dma_gmac;
+	DMAContext dma_nand;
 	AddressSpace as;
 	void *ls1a;
 	union{
@@ -202,13 +206,12 @@ static const MemoryRegionOps pci_bonito_local_ops = {
 };
 
 
-static int ls1adma_translate(DMAContext *dma,
+static int ls1adma_translate(LS1APciState *s, DMAContext *dma,
                                dma_addr_t addr,
                                hwaddr *paddr,
                                hwaddr *len,
                                DMADirection dir)
 {
-    LS1APciState *s = container_of (dma, LS1APciState, dma);
     uint32_t pcimap = s->pcilocalreg.pcimap;
 	//dma_memory_map
     	//dma_memory_rw
@@ -239,6 +242,57 @@ static int ls1adma_translate(DMAContext *dma,
     return 0;
 }
 
+static int ls1adma_ehci_translate(DMAContext *dma,
+                               dma_addr_t addr,
+                               hwaddr *paddr,
+                               hwaddr *len,
+                               DMADirection dir)
+{
+    LS1APciState *s = container_of (dma, LS1APciState, dma_ehci);
+    return ls1adma_translate(s, dma, addr, paddr, len, dir);
+}
+
+static int ls1adma_ohci_translate(DMAContext *dma,
+                               dma_addr_t addr,
+                               hwaddr *paddr,
+                               hwaddr *len,
+                               DMADirection dir)
+{
+    LS1APciState *s = container_of (dma, LS1APciState, dma_ohci);
+    return ls1adma_translate(s, dma, addr, paddr, len, dir);
+}
+
+
+static int ls1adma_ahci_translate(DMAContext *dma,
+                               dma_addr_t addr,
+                               hwaddr *paddr,
+                               hwaddr *len,
+                               DMADirection dir)
+{
+    LS1APciState *s = container_of (dma, LS1APciState, dma_ahci);
+    return ls1adma_translate(s, dma, addr, paddr, len, dir);
+}
+
+static int ls1adma_gmac_translate(DMAContext *dma,
+                               dma_addr_t addr,
+                               hwaddr *paddr,
+                               hwaddr *len,
+                               DMADirection dir)
+{
+    LS1APciState *s = container_of (dma, LS1APciState, dma_gmac);
+    return ls1adma_translate(s, dma, addr, paddr, len, dir);
+}
+
+
+static int ls1adma_nand_translate(DMAContext *dma,
+                               dma_addr_t addr,
+                               hwaddr *paddr,
+                               hwaddr *len,
+                               DMADirection dir)
+{
+    LS1APciState *s = container_of (dma, LS1APciState, dma_nand);
+    return ls1adma_translate(s, dma, addr, paddr, len, dir);
+}
 
 
 static int ls1a_initfn(PCIDevice *dev)
@@ -278,7 +332,11 @@ static int ls1a_initfn(PCIDevice *dev)
     memory_region_init(&d->iomem_root, "system", INT32_MAX);
     address_space_init(&d->as, &d->iomem_root);
     address_space_memory.name = "ls1a memory";
-    dma_context_init(&d->dma, &d->as, ls1adma_translate, NULL, NULL);
+    dma_context_init(&d->dma_ehci, &d->as, ls1adma_ehci_translate, NULL, NULL);
+    dma_context_init(&d->dma_ohci, &d->as, ls1adma_ohci_translate, NULL, NULL);
+    dma_context_init(&d->dma_ahci, &d->as, ls1adma_ahci_translate, NULL, NULL);
+    dma_context_init(&d->dma_gmac, &d->as, ls1adma_gmac_translate, NULL, NULL);
+    dma_context_init(&d->dma_nand, &d->as, ls1adma_nand_translate, NULL, NULL);
 
     memory_region_add_subregion(&d->iomem_root, 0x1c200000, &d->iomem_dc0);
     memory_region_add_subregion(&d->iomem_root, 0x1f000000, &d->iomem_axi0);
@@ -327,7 +385,7 @@ static int ls1a_initfn(PCIDevice *dev)
 		SysBusDevice *sysbusdev;
 		hwaddr devaddr =  0x00e00000;
 		dev = qdev_create(NULL, "exynos4210-ehci-usb");
-		qdev_prop_set_ptr(dev, "dma", &d->dma);
+		qdev_prop_set_ptr(dev, "dma", &d->dma_ehci);
 		qdev_init_nofail(dev);
 
 		sysbusdev =  SYS_BUS_DEVICE(dev);
@@ -343,7 +401,7 @@ static int ls1a_initfn(PCIDevice *dev)
 		dev = qdev_create(NULL, "sysbus-ohci");
 		qdev_prop_set_uint32(dev, "num-ports", 4);
 		qdev_prop_set_taddr(dev, "dma-offset", 0);
-		qdev_prop_set_ptr(dev, "dma", &d->dma);
+		qdev_prop_set_ptr(dev, "dma", &d->dma_ohci);
 		qdev_init_nofail(dev);
 
 		sysbusdev =  SYS_BUS_DEVICE(dev);
@@ -359,7 +417,7 @@ static int ls1a_initfn(PCIDevice *dev)
 		BusState *idebus[4];
 		dev = qdev_create(NULL, "sysbus-ahci");
 		qdev_prop_set_uint32(dev, "num-ports", 2);
-		qdev_prop_set_ptr(dev, "dma", &d->dma);
+		qdev_prop_set_ptr(dev, "dma", &d->dma_ahci);
 		qdev_init_nofail(dev);
 
 		sysbusdev =  SYS_BUS_DEVICE(dev);
@@ -399,7 +457,7 @@ static int ls1a_initfn(PCIDevice *dev)
 		hwaddr devaddr =  0x00e10000;
 		dev = qdev_create(NULL, "sysbus-synopgmac");
 		qdev_set_nic_properties(dev, d->nd);
-		qdev_prop_set_ptr(dev, "dma", &d->dma);
+		qdev_prop_set_ptr(dev, "dma", &d->dma_gmac);
 		qdev_init_nofail(dev);
 
 		sysbusdev =  SYS_BUS_DEVICE(dev);
@@ -475,7 +533,7 @@ static int ls1a_initfn(PCIDevice *dev)
 		dev = qdev_create(NULL, "ls1a_nand");
 		s =  SYS_BUS_DEVICE(dev);
 		s->mmio[0].addr = devaddr;
-		qdev_prop_set_ptr(dev, "dma", &d->dma);
+		qdev_prop_set_ptr(dev, "dma", &d->dma_nand);
 		qdev_init_nofail(dev);
 		sysbus_connect_irq(s, 0, ls1a_irq[13]);
 		memory_region_add_subregion(&d->iomem_axi, devaddr, s->mmio[0].memory);
