@@ -154,11 +154,13 @@ static void dma_bdrv_cb(void *opaque, int ret)
     }
 
     while (dbs->sg_cur_index < dbs->sg->nsg) {
+	dma_addr_t maxlen;
         cur_addr = dbs->sg->sg[dbs->sg_cur_index].base + dbs->sg_cur_byte;
         cur_len = dbs->sg->sg[dbs->sg_cur_index].len - dbs->sg_cur_byte;
-        mem = dma_memory_map(dbs->sg->dma, cur_addr, &cur_len, dbs->dir);
+        mem = dma_memory_map(dbs->sg->dma, cur_addr, &maxlen, dbs->dir);
         if (!mem)
             break;
+	cur_len = (maxlen < cur_len)? maxlen : cur_len;
         qemu_iovec_add(&dbs->iov, mem, cur_len);
         dbs->sg_cur_byte += cur_len;
         if (dbs->sg_cur_byte == dbs->sg->sg[dbs->sg_cur_index].len) {
