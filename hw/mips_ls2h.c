@@ -428,15 +428,27 @@ static void mips_ls2h_init (QEMUMachineInitArgs *args)
 	memory_region_init_ram(ram, "mips_r4k.ram", ram_size);
 	vmstate_register_ram_global(ram);
 
+	if(ram_size > 0x10000000)
+	{
+	MemoryRegion *ram1 = g_new(MemoryRegion, 1);
+	memory_region_init_alias(ram1, "lowmem", ram, 0, 0x10000000);
+	memory_region_add_subregion(address_space_mem, 0, ram1);
+	memory_region_add_subregion(address_space_mem, 0x100000000ULL, ram);
+	}
+	else
+	{
 	memory_region_add_subregion(address_space_mem, 0, ram);
+	}
 
 #if 1
 /*fix me
  current ahci code use address_space_memory
 */
 	{
+	int dma_size;
+	dma_size = ram_size > 0x10000000? 0x10000000: ram_size;
 	MemoryRegion *ram1 = g_new(MemoryRegion, 1);
-	memory_region_init_alias(ram1, "ls1a_dc0", ram, 0, ram_size);
+	memory_region_init_alias(ram1, "dma mem", ram, 0, dma_size);
 	memory_region_add_subregion(address_space_mem, 0x40000000, ram1);
 	}
 #else
@@ -710,6 +722,21 @@ static void mips_ls2h_init (QEMUMachineInitArgs *args)
 		{
 		mips_qemu_writel((void *)0x1fd00420, 0, 0x0, 4);
 		}
+	}
+
+	{
+		DeviceState *dev;
+		SysBusDevice *s;
+		BusState *hdabus;
+		DeviceState *codec;
+		dev = qdev_create(NULL, "intel-hda");
+		qdev_init_nofail(dev);
+		s = SYS_BUS_DEVICE(dev);
+		sysbus_mmio_map(s, 0, 0x1fe20000);
+		sysbus_connect_irq(s, 0, ls2h_irq1[25]);
+		hdabus = QLIST_FIRST(&dev->child_bus);
+		codec = qdev_create(hdabus, "hda-duplex");
+		qdev_init_nofail(codec);
 	}
 
 }
