@@ -516,8 +516,11 @@ void do_interrupt (CPUMIPSState *env)
             int SX = (env->CP0_Status & (1 << CP0St_SX)) != 0;
             int KX = (env->CP0_Status & (1 << CP0St_KX)) != 0;
 
+	    /*
+		Loongson 2E and Loongson 2F is special
+	    */
             if (((R == 0 && UX) || (R == 1 && SX) || (R == 3 && KX)) &&
-                (!(env->insn_flags & (INSN_LOONGSON2E | INSN_LOONGSON2F))))
+                (env->CP0_PRid != 0x6302 && env->CP0_PRid != 0x6303))
                 offset = 0x080;
             else
 #endif
@@ -534,7 +537,7 @@ void do_interrupt (CPUMIPSState *env)
             int KX = (env->CP0_Status & (1 << CP0St_KX)) != 0;
 
             if (((R == 0 && UX) || (R == 1 && SX) || (R == 3 && KX)) &&
-                (!(env->insn_flags & (INSN_LOONGSON2E | INSN_LOONGSON2F))))
+                (env->CP0_PRid != 0x6302 && env->CP0_PRid != 0x6303))
                 offset = 0x080;
             else
 #endif
