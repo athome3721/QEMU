@@ -427,23 +427,6 @@ static const mips_def_t mips_defs[] =
         .insn_flags = CPU_MIPS32R2 | ASE_MIPS16 | ASE_DSP | ASE_DSPR2,
         .mmu_type = MMU_TYPE_R4000,
     },
-    {
-        .name = "gs2f",
-        .CP0_PRid = 0x00006302,
-        /* No L2 cache, icache size 8k, dcache size 8k, cached coherency. */
-        .CP0_Config0 = (3 << 16) | (0x4 << 9) | (0x4 << 6) | (0x3 << 4) | (0x3 << CP0C0_K0),
-	/* Note: Config1 is only used internally, the R4000 has only Config0. */
-        .CP0_Config1 = (1 << CP0C1_FP) | (63 << CP0C1_MMU),
-        .SYNCI_Step = 16,
-        .CCRes = 2,
-        .CP0_Status_rw_bitmask = 0x3678FFFF,
-	/* The R4000 has a full 64bit FPU but doesn't use the fcr0 bits. */
-        .CP1_fcr0 = (0x5 << FCR0_PRID) | (0x0 << FCR0_REV),
-        .SEGBITS = 40,
-        .PABITS = 36,
-        .insn_flags = CPU_MIPS3 | CPU_MIPS64,
-        .mmu_type = MMU_TYPE_R4000,
-    },
 #if defined(TARGET_MIPS64)
     {
         .name = "R4000",

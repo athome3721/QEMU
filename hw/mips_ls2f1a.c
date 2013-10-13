@@ -253,9 +253,9 @@ static void mips_ls2f_ls1a_init (QEMUMachineInitArgs *args)
     /* init CPUs */
     if (cpu_model == NULL) {
 #ifdef TARGET_MIPS64
-        cpu_model = "gs2f";
+        cpu_model = "Loongson-2F";
 #else
-        cpu_model = "gs2f";
+        cpu_model = "Loongson-2F";
 #endif
     }
 
