@@ -971,7 +971,7 @@ static struct soundhw soundhw[] = {
     },
 #endif
 
-#ifdef CONFIG_HDA
+#if defined(CONFIG_HDA) && !defined(CONFIG_LS2H_HDA)
     {
         "hda",
         "Intel HD Audio",
