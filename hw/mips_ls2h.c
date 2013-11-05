@@ -71,9 +71,6 @@ static void *boot_params_buf;
 static void *boot_params_p;
 #define align(x) (((x)+15)&~15)
 
-static int clkreg[2];
-static MemoryRegion *ddrcfg_iomem;
-static int reg0420[1]={0x2};
 
 static void mips_qemu_writel (void *opaque, hwaddr addr,
 		uint64_t val, unsigned size)
@@ -81,26 +78,9 @@ static void mips_qemu_writel (void *opaque, hwaddr addr,
 	addr=((hwaddr)(long)opaque) + addr;
 	switch(addr)
 	{
-		case 0x1fe78030:
-		case 0x1fe78034:
-			clkreg[(addr - 0x1fe78030)/4] = val;
-			break;
+		case 0x1fd00210:
+		break;
 
-		case 0x1fd00420:
-
-			if(val&0x2 && !(reg0420[0]&2))
-			{
-				memory_region_del_subregion(get_system_memory(), ddrcfg_iomem);
-			}
-
-			if(!(val&0x2) && (reg0420[0]&0x2))
-			{
-				memory_region_add_subregion_overlap(get_system_memory(), 0x0ffffe00&TARGET_PAGE_MASK, ddrcfg_iomem, 1);
-			}
-
-			reg0420[0] = val;
-
-			break;
 	}
 }
 
@@ -109,22 +89,8 @@ static uint64_t mips_qemu_readl (void *opaque, hwaddr addr, unsigned size)
 	addr=((hwaddr)(long)opaque) + addr;
 	switch(addr)
 	{
-		case 0x1fe78030:
-		case 0x1fe78034:
-			return clkreg[(addr - 0x1fe78030)/4];
-			break;
-		case 0x1fd00420:
-			return reg0420[0];
-			break;
-		case 0x0ffffe10:
-			return 1;
-			break;
-		case 0x0ffffef0:
-			return 0x100000;
-			break;
-		case 0x0ffffef2:
-			return 0x10;
-			break;
+		case 0x1fd00210:
+		return 0x1800;
 	}
 	return 0;
 }
@@ -190,7 +156,7 @@ static int set_bootparam(ram_addr_t initrd_offset,long initrd_size)
 	*parg_env++=0;
 
 	//env
-	sprintf(memenv,"memsize=%d",loaderparams.ram_size>0x10000000?256:(loaderparams.ram_size>>20));
+	sprintf(memenv,"memsize=%d",loaderparams.ram_size>=0xf000000?240:(loaderparams.ram_size>>20));
 	sprintf(highmemenv,"highmemsize=%d",loaderparams.ram_size>0x10000000?(loaderparams.ram_size>>20)-256:0);
 
 
@@ -256,7 +222,7 @@ static int set_bootparam1(ram_addr_t initrd_offset,long initrd_size)
 
 	//env
 
-	sprintf(memenv,"%d",loaderparams.ram_size>0x10000000?256:(loaderparams.ram_size>>20));
+	sprintf(memenv,"%d",loaderparams.ram_size>0xf000000?240:(loaderparams.ram_size>>20));
 	sprintf(highmemenv,"%d",loaderparams.ram_size>0x10000000?(loaderparams.ram_size>>20)-256:0);
 	setenv("memsize", memenv, 1);
 	setenv("highmemsize", highmemenv, 1);
@@ -381,6 +347,7 @@ static int ls2hdma_translate(DMAContext *dma,
 #endif
 
 
+static int ddr2config = 0;
 static void mips_ls2h_init (QEMUMachineInitArgs *args)
 {
 	ram_addr_t ram_size = args->ram_size;
@@ -399,7 +366,6 @@ static void mips_ls2h_init (QEMUMachineInitArgs *args)
 	qemu_irq *ls2h_irq,*ls2h_irq1;
 	PCIBus *pci_bus;
 	DriveInfo *flash_dinfo=NULL;
-	int ddr2config = 0;
 
 
 	/* init CPUs */
@@ -533,7 +499,7 @@ static void mips_ls2h_init (QEMUMachineInitArgs *args)
 	if (serial_hds[3])
 		serial_mm_init(address_space_mem, 0x1fe83000, 0,ls2h_irq[5],115200,serial_hds[3], DEVICE_NATIVE_ENDIAN);
 
-	sysbus_create_simple("ls1a_fb", 0x1fe50000, NULL);
+	sysbus_create_simple("ls2h_fb", 0x1fe50000, NULL);
 
 #if 0
 	{
@@ -703,26 +669,12 @@ static void mips_ls2h_init (QEMUMachineInitArgs *args)
 
 
 	{
-                MemoryRegion *iomem = g_new(MemoryRegion, 1);
-                memory_region_init_io(iomem, &mips_qemu_ops, (void *)0x1fe78030, "0x1fe78030", 0x8);
-                memory_region_add_subregion(address_space_mem, 0x1fe78030, iomem);
-	}
-
-	{
 
                 MemoryRegion *iomem = g_new(MemoryRegion, 1);
-                memory_region_init_io(iomem, &mips_qemu_ops, (void *)0x1fd00420, "0x1fd00420", 0x4);
-                memory_region_add_subregion(address_space_mem, 0x1fd00420, iomem);
+                memory_region_init_io(iomem, &mips_qemu_ops, (void *)0x1fd00210, "0x1fd00210", 0x4);
+                memory_region_add_subregion(address_space_mem, 0x1fd00210, iomem);
 	}
 
-	{
-                ddrcfg_iomem = g_new(MemoryRegion, 1);
-                memory_region_init_io(ddrcfg_iomem, &mips_qemu_ops, (void *)(0x0ffffe00&TARGET_PAGE_MASK), "ddr", TARGET_PAGE_SIZE);
-		if(ddr2config)
-		{
-		mips_qemu_writel((void *)0x1fd00420, 0, 0x0, 4);
-		}
-	}
 
 	{
 		DeviceState *dev;
