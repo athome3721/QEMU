@@ -1,6 +1,7 @@
 #ifndef __ASM_MACH_LOONGSON_BOOT_PARAM_H_
 #define __ASM_MACH_LOONGSON_BOOT_PARAM_H_
 
+#define DMA64_SUPPORT 0x2
 
 #define SYSTEM_RAM_LOW 1
 #define SYSTEM_RAM_HIGH 2
@@ -51,7 +52,7 @@ struct efi_systab {
 
 enum loongson_cpu_type
 {
-	Loongson_2F,Loongson_2E, Loongson_3A, Loongson_3B,Loongson_1A,Loongson_1B,loongson_2H
+	Loongson_2F,Loongson_2E, Loongson_3A, Loongson_3B,Loongson_1A,Loongson_1B,Loongson_2H
 };
 
 struct efi_cpuinfo_loongson {

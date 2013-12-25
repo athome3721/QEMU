@@ -101,8 +101,8 @@ struct efi_memory_map_loongson * init_memory_map(void *g_map)
   emap->map[0].node_id = 0;
   //strcpy(emap->map[0].mem_name, "node0_low");
   emap->map[0].mem_type = 1;
-  emap->map[0].mem_start = 0x0;
-  emap->map[0].mem_size = atoi(getenv("memsize"));
+  emap->map[0].mem_start = 0x01000000;
+  emap->map[0].mem_size = atoi(getenv("memsize")) - 96;
 #else 
   emap->map[0].node_id = 0;
   //strcpy(emap->map[0].mem_name, "node0_low");
@@ -114,7 +114,7 @@ struct efi_memory_map_loongson * init_memory_map(void *g_map)
   emap->map[1].node_id = 0;
   //strcpy(emap->map[1].mem_name, "node0_high");
   emap->map[1].mem_type = 2;
-#if defined(LOONGSON_3A2H) || defined(LOONGSON_2H)
+#if defined(LOONGSON_3A2H) || defined(LOONGSON_2H) || defined(LOONGSON_3C2H)
   emap->map[1].mem_start = 0x110000000;
 #else
   emap->map[1].mem_start = 0x90000000;
@@ -129,8 +129,8 @@ struct efi_memory_map_loongson * init_memory_map(void *g_map)
 #ifdef LOONGSON_2H 
   emap->map[3].node_id = 0;
   emap->map[3].mem_type = 3;
-  emap->map[3].mem_start = 0xf000000;
-  emap->map[3].mem_size = 16;
+  emap->map[3].mem_start = 0x120000000;
+  emap->map[3].mem_size = 256;
 #else
   emap->map[3].node_id = 0;
   emap->map[3].mem_type = 3;
@@ -419,6 +419,10 @@ struct loongson_special_attribute *init_special_info(void *g_special)
   special->resource[0].start = 0;
   special->resource[0].end = VRAM_SIZE;
   strcpy(special->resource[0].name,"SPMODULE");
+#endif
+
+#ifndef LOONGSON_2H
+  special->resource[0].flags |= DMA64_SUPPORT;
 #endif
   return special;
 }
