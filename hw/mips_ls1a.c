@@ -196,21 +196,26 @@ static int64_t load_kernel(void)
 	//env->gpr[REG][env->current_tc]
 	{
 		char memenv[32];
-		char highmemenv[32];
-		const char *pmonenv[]={"cpuclock=200000000",memenv,highmemenv};
 		int i;
 		unsigned int *parg_env=(void *)params_buf;
 		/*
 		 * pram buf like this:
 		 *argv[0] argv[1] 0 env[0] env[1] ...env[i] ,0, argv[0]'s data , argv[1]'s data ,env[0]'data,...,env[i]'s dat,0
 		 */
+		
+		sprintf(memenv,"%d",loaderparams.ram_size>0x10000000?256:(loaderparams.ram_size>>20));
+		setenv("ENV_memsize", memenv, 1);
+		sprintf(memenv,"%d",loaderparams.ram_size>0x10000000?(loaderparams.ram_size>>20)-256:0);
+		setenv("ENV_highmemsize", memenv, 1);
+		setenv("ENV_cpuclock", "200000000", 0);
+		setenv("ENV_busclock", "33333333", 0);
 
 		//*count user special env
 		for(ret=0,i=0;environ[i];i++)
 			if(!strncmp(environ[i],"ENV_",4))ret+=4;
 
 		//jump over argv and env area
-		ret +=(3+sizeof(pmonenv)/sizeof(char *)+1)*4;
+		ret +=(3+1)*4;
 		//argv0
 		*parg_env++=BOOTPARAM_ADDR+ret;
 		ret +=1+snprintf(params_buf+ret,256-ret,"g");
@@ -226,16 +231,6 @@ static int64_t load_kernel(void)
 		//argv2
 		*parg_env++=0;
 
-		//env
-		sprintf(memenv,"memsize=%d",loaderparams.ram_size>0x10000000?256:(loaderparams.ram_size>>20));
-		sprintf(highmemenv,"highmemsize=%d",loaderparams.ram_size>0x10000000?(loaderparams.ram_size>>20)-256:0);
-
-
-		for(i=0;i<sizeof(pmonenv)/sizeof(char *);i++)
-		{
-			*parg_env++=BOOTPARAM_ADDR+ret;
-			ret +=1+snprintf(params_buf+ret,256-ret,"%s",pmonenv[i]);
-		}
 
 		for(i=0;environ[i];i++)
 		{
