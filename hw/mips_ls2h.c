@@ -45,6 +45,8 @@
 #include "qdev-addr.h"
 #include "ide/internal.h"
 #include "loongson_bootparam.h"
+#include "pci/pci_bridge.h"
+#include "pci/pci_bus.h"
 
 #define PHYS_TO_VIRT(x) ((x) | ~(target_ulong)0x7fffffff)
 
@@ -325,7 +327,7 @@ static int board_map_irq(int bus,int dev,int func,int pin)
 
 static const int sector_len = 32 * 1024;
 
-static PCIBus *pcibus_ls2h_init(qemu_irq *pic, int (*board_map_irq)(int bus,int dev,int func,int pin));
+static PCIBus *pcibus_ls2h_init(int busno,qemu_irq *pic, int (*board_map_irq)(int bus,int dev,int func,int pin));
 
 struct ls2h_dma_struc {
 MemoryRegion iomem;
@@ -364,7 +366,7 @@ static void mips_ls2h_init (QEMUMachineInitArgs *args)
 	CPUMIPSState *env;
 	ResetData *reset_info;
 	qemu_irq *ls2h_irq,*ls2h_irq1;
-	PCIBus *pci_bus;
+	PCIBus *pci_bus[4];
 	DriveInfo *flash_dinfo=NULL;
 
 
@@ -510,7 +512,10 @@ static void mips_ls2h_init (QEMUMachineInitArgs *args)
 #endif
 
 
-	pci_bus=pcibus_ls2h_init(&ls2h_irq1[6],board_map_irq);
+	pci_bus[0]=pcibus_ls2h_init(0, &ls2h_irq1[6],board_map_irq);
+	pci_bus[1]=pcibus_ls2h_init(1, &ls2h_irq1[6],board_map_irq);
+	pci_bus[2]=pcibus_ls2h_init(2, &ls2h_irq1[6],board_map_irq);
+	pci_bus[3]=pcibus_ls2h_init(3, &ls2h_irq1[6],board_map_irq);
 
 
 	sysbus_create_simple("exynos4210-ehci-usb",0x1fe00000, ls2h_irq1[0]);
@@ -555,12 +560,24 @@ static void mips_ls2h_init (QEMUMachineInitArgs *args)
 #endif
 
 	if (nb_nics) {
-		gmac_sysbus_create(&nd_table[0], 0x1fe10000, ls2h_irq1[3]);
-	   if(nb_nics>1)
+	int i;
+	int devfn;
+		//gmac_sysbus_create(&nd_table[0], 0x1fe10000, ls2h_irq1[3]);
+	   for(i=0,devfn=PCI_DEVFN(2, 0);i<nb_nics;i++,devfn += PCI_DEVFN(1, 0))
 	  {
-		PCIDevice *dev;
-            dev = pci_nic_init(&nd_table[1],nd_table[1].model?:"e1000","0b");
-	    printf("nb_nics=%d dev=%p\n", nb_nics, dev);
+		PCIDevice *pci_dev;
+		DeviceState *dev;
+            //dev = pci_nic_init(&nd_table[i],nd_table[i].model?:"e1000","01:0b");
+		pci_dev = pci_create(pci_bus[i], -1, "e1000");
+		dev = &pci_dev->qdev;
+		qdev_set_nic_properties(dev, &nd_table[i]);
+    		DeviceClass *dc = DEVICE_GET_CLASS(dev);
+    		PCIDeviceClass *k = PCI_DEVICE_CLASS(DEVICE_CLASS(dc));
+    		k->romfile = NULL;
+    		dc->vmsd = NULL;
+		qdev_init_nofail(dev);
+
+	    	printf("nb_nics=%d dev=%p\n", nb_nics, pci_dev);
 	  }
 	}
 
@@ -592,14 +609,6 @@ static void mips_ls2h_init (QEMUMachineInitArgs *args)
 	}
 
 
-	{
-	int i;
-		DriveInfo *hd[MAX_IDE_BUS * MAX_IDE_DEVS];
-		for(i = 0; i < MAX_IDE_BUS * MAX_IDE_DEVS; i++) {
-			hd[i] = drive_get_next(IF_IDE);
-		}
-		pci_cmd646_ide_init(pci_bus, hd, 0);
-	}
 
 #if 0
 	{
@@ -745,8 +754,17 @@ static void pci_ls2h_set_irq(void *opaque, int irq_num, int level)
 qemu_irq *pic = opaque;
 	qemu_set_irq(pic[irq_num],level);
 }
+/*self pci header*/
+#define LS2H_PCIE_PORT_HEAD_BASE_PORT(portnum)  (0x18114000 + (portnum << 22))
+/*devices pci header*/
+#define LS3H_PCIE_DEV_HEAD_BASE_PORT(portnum)   (0x18116000 + (portnum << 22))
+/*pci map*/
+#define LS2H_PCIE_REG_BASE_PORT(portnum)        (0x18118000 + (portnum << 22))
+#define LS2H_PCIE_PORT_REG_STAT1		0xC
+#define LS2H_PCIE_PORT_REG_CTR0			0x0
+#define LS2H_PCIE_PORT_REG_CFGADDR		0x24
+#define LS2H_PCIE_PORT_REG_CTR_STAT		0x28
 
-#define PCI_LOCAL_REG_ADDRESS 0x1fd01114
 
 #define TYPE_BONITO_PCI_HOST_BRIDGE "ls2h-pcihost"
 typedef struct BonitoState BonitoState;
@@ -756,14 +774,44 @@ typedef struct BonitoState BonitoState;
 
 typedef struct PCIBonitoState
 {
-	PCIDevice dev;
+    	PCIBridge bridge;
 	BonitoState *pcihost;
 	MemoryRegion iomem;
 	struct pcilocalreg{
-		unsigned int pcimap;
-		unsigned int pcix_rgagte;
-		unsigned int pcix_noused;
-		unsigned int pcimap_cfg;
+		/*0*/
+		unsigned int portctr0;
+		unsigned int portctr1;
+		unsigned int portstat0;
+		unsigned int portstat1;
+		/*0x10*/
+		unsigned int usrmsgid;
+		unsigned int nouse;
+		unsigned int portintsts;
+		unsigned int portintclr;
+		/*0x20*/
+		unsigned int portintmsk;
+		unsigned int portcfg;
+		unsigned int portctrsts;
+		unsigned int physts;
+		/*0x30*/
+		unsigned int nouse1[2];
+		unsigned int usrmsg0;
+		unsigned int usrmsg1;
+		/*0x40*/
+		unsigned int usrmsgsend0;
+		unsigned int usrmsgsend1;
+		unsigned int noused2[5];
+		/*0x5c*/
+		unsigned int msi;
+		unsigned int noused3[2];
+		/*0x68*/
+		unsigned int addrmsk;
+		unsigned int addrmsk1;
+		/*0x70*/
+		unsigned int addrtrans;
+		unsigned int addrtrans1;
+		unsigned int dataload0;
+		unsigned int dataload1;
 	} mypcilocalreg;
 } PCIBonitoState;
 
@@ -778,20 +826,12 @@ static inline uint32_t bonito_pci_config_addr(PCIBonitoState *s,hwaddr addr)
 	int bus = 0, dev = -1, func = 0, reg = 0;
 	uint32_t busaddr;
 	struct pcilocalreg *d=&s->mypcilocalreg;
-	busaddr = ((d->pcimap_cfg & 0xffff) << 16) | (addr & 0xfffc);
+	busaddr = d->portcfg;
 
-	if (d->pcimap_cfg & 0x10000) {
 	bus = busaddr >> 16;
 	dev = (busaddr >> 11) & 0x1f;
 	func = (busaddr >> 8) & 7;
-	reg = busaddr & 0xfc;
-	}
-	else {
-		bus = 0;
-		dev = ffs(busaddr>>11)-1;
-		func = (busaddr >> 8) & 7;
-		reg = busaddr & 0xfc;
-	}
+	reg = (addr & 0xfc);
 
 	return bus<<16|dev<<11|func<<8|reg;
 }
@@ -823,12 +863,37 @@ static const MemoryRegionOps pci_ls2h_config_ops = {
 };
 
 
+#define LS2H_PCIE_REG_CTR0_BIT_LTSSM_EN			(1 << 3)
+#define LS2H_PCIE_REG_CTR0_BIT_REQ_L1			(1 << 12)
+#define LS2H_PCIE_REG_CTR0_BIT_RDY_L23			(1 << 13)
+#define LS2H_PCIE_PORT_REG_STAT1		0xC
+#define LS2H_PCIE_REG_STAT1_MASK_LTSSM		0x0000003f
+#define LS2H_PCIE_REG_STAT1_BIT_LINKUP			(1 << 6)
+#define LS2H_PCIE_PORT_REG_CFGADDR		0x24
+#define LS2H_PCIE_PORT_REG_CTR_STAT		0x28
+#define LS2H_PCIE_REG_CTR_STAT_BIT_ISX4			(1 << 26)
+#define LS2H_PCIE_REG_CTR_STAT_BIT_ISRC			(1 << 27)
+
 static uint64_t pci_bonito_local_readl (void *opaque, hwaddr addr, unsigned size)
 {
     PCIBonitoState *s = opaque;
 	uint32_t val;
-	uint32_t relative_addr=addr;
-	val = ((uint32_t *)&s->mypcilocalreg)[relative_addr/sizeof(uint32_t)];
+
+	//printf("local addr=%x\n", (unsigned int)addr);
+	if(addr>=sizeof(struct pcilocalreg)) return 0;
+
+	switch(addr)
+	{
+	case LS2H_PCIE_PORT_REG_CTR_STAT:
+	 val = LS2H_PCIE_REG_CTR_STAT_BIT_ISRC|LS2H_PCIE_REG_STAT1_BIT_LINKUP;
+         break;
+	case LS2H_PCIE_PORT_REG_STAT1:
+	 val = -1;
+	 break;
+	default:
+	 val = ((uint32_t *)&s->mypcilocalreg)[addr/sizeof(uint32_t)];
+	 break;
+	}
 	switch(size)
 	{
 	case 1:
@@ -846,6 +911,8 @@ static void pci_bonito_local_writel (void *opaque, hwaddr addr,
 {
     PCIBonitoState *s = opaque;
 	uint32_t relative_addr=addr;
+	//printf("local addr=%x\n", (unsigned int)addr);
+	if(addr>=sizeof(struct pcilocalreg)) return;
 	((uint32_t *)&s->mypcilocalreg)[relative_addr/sizeof(uint32_t)]=val;
 }
 
@@ -888,33 +955,38 @@ static const MemoryRegionOps bonito_pciconf_ops = {
 
 static int bonito_initfn(PCIDevice *dev)
 {
-    PCIBonitoState *s = DO_UPCAST(PCIBonitoState, dev, dev);
+    int rc;
+    PCIBonitoState *s = DO_UPCAST(PCIBonitoState, bridge.dev, dev);
     SysBusDevice *sysbus = SYS_BUS_DEVICE(s->pcihost);
     PCIHostState *phb = PCI_HOST_BRIDGE(s->pcihost);
 
-    /* Bonito North Bridge, built on FPGA, VENDOR_ID/DEVICE_ID are "undefined" */
-    pci_config_set_prog_interface(dev->config, 0x00);
+    rc = pci_bridge_initfn(dev);
+    if (rc < 0) {
+        return rc;
+    }
 
-
-    memory_region_init_io(&s->iomem, &pci_bonito_local_ops, s, "ls2h_pci_conf", 16);
+    memory_region_init_io(&s->iomem, &pci_bonito_local_ops, s, "ls2h_pci_conf", 0x100);
     sysbus_init_mmio(sysbus, &s->iomem);
-    sysbus_mmio_map(sysbus, 0, PCI_LOCAL_REG_ADDRESS);
 
     /* set the north bridge pci configure  mapping */
     memory_region_init_io(&phb->conf_mem, &bonito_pciconf_ops, s,
                           "north-bridge-pci-config", 0x100);
     sysbus_init_mmio(sysbus, &phb->conf_mem);
-    sysbus_mmio_map(sysbus, 1, 0x1c110000);
 
     /* set the south bridge pci configure  mapping */
     memory_region_init_io(&phb->data_mem, &pci_ls2h_config_ops, s,
-                          "south-bridge-pci-config", 0x10000);
+                          "south-bridge-pci-config", 0x100);
     sysbus_init_mmio(sysbus, &phb->data_mem);
-    sysbus_mmio_map(sysbus, 2, 0x1c100000);
 
+    pci_config_set_prog_interface(dev->config, PCI_CLASS_BRDIGE_PCI_INF_SUB);
     /* set the default value of north bridge pci config */
-    pci_set_word(dev->config + PCI_COMMAND, 0x0000);
-    pci_set_word(dev->config + PCI_STATUS, 0x0000);
+//hw/xio3130_downstream.c
+
+    pci_set_word(dev->config + PCI_COMMAND,
+                 PCI_COMMAND_MEMORY|PCI_COMMAND_IO);
+    pci_set_word(dev->config + PCI_STATUS,
+                 PCI_STATUS_FAST_BACK | PCI_STATUS_66MHZ |
+                 PCI_STATUS_DEVSEL_MEDIUM);
     pci_set_word(dev->config + PCI_SUBSYSTEM_VENDOR_ID, 0x0000);
     pci_set_word(dev->config + PCI_SUBSYSTEM_ID, 0x0000);
 
@@ -934,29 +1006,37 @@ static void bonito_class_init(ObjectClass *klass, void *data)
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
     k->init = bonito_initfn;
+    k->exit = pci_bridge_exitfn;
     k->vendor_id = 0xdf53;
     k->device_id = 0x00d5;
     k->revision = 0x01;
     k->class_id = PCI_CLASS_BRIDGE_HOST;
+    k->is_bridge = 1;
+    k->config_write = pci_bridge_write_config;
+    dc->reset = pci_bridge_reset;
     dc->desc = "Host bridge";
     dc->no_user = 1;
+//pci_bridge_dev_initfn
 }
 
 static const TypeInfo bonito_info = {
-    .name          = "LS1A_Bonito",
+    .name          = "LS2H_Bonito",
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(PCIBonitoState),
     .class_init    = bonito_class_init,
 };
 
 
-static PCIBus *pcibus_ls2h_init(qemu_irq *pic, int (*board_map_irq)(int bus,int dev,int func,int pin))
+static PCIBus *pcibus_ls2h_init(int busno, qemu_irq *pic, int (*board_map_irq)(int bus,int dev,int func,int pin))
 {
     DeviceState *dev;
     BonitoState *pcihost;
     PCIHostState *phb;
     PCIBonitoState *s;
     PCIDevice *d;
+    SysBusDevice *sysbus;
+    PCIBridge *br;
+    PCIBus *bus2;
 	local_board_map_irq = board_map_irq;
 
     dev = qdev_create(NULL, TYPE_BONITO_PCI_HOST_BRIDGE);
@@ -966,14 +1046,28 @@ static PCIBus *pcibus_ls2h_init(qemu_irq *pic, int (*board_map_irq)(int bus,int 
     qdev_init_nofail(dev);
 
     /* set the pcihost pointer before bonito_initfn is called */
-    d = pci_create(phb->bus, PCI_DEVFN(0, 0), "LS1A_Bonito");
-    s = DO_UPCAST(PCIBonitoState, dev, d);
+    //d = pci_create(phb->bus, PCI_DEVFN(0, 0), "LS2H_Bonito");
+    d = pci_create_multifunction(phb->bus, PCI_DEVFN(0, 0), true, "LS2H_Bonito");
+
+    s = DO_UPCAST(PCIBonitoState, bridge.dev, d);
     s->pcihost = pcihost;
     pcihost->pci_dev = s;
+    br = DO_UPCAST(PCIBridge, dev, d);
+//   pci_bridge_map_irq(br, "Advanced PCI Bus secondary bridge 1", board_map_irq);
     qdev_init_nofail(DEVICE(d));
+    bus2 = pci_bridge_get_sec_bus(br);
 
 
-    return phb->bus;
+    sysbus = SYS_BUS_DEVICE(s->pcihost);
+     /*local map*/
+    sysbus_mmio_map(sysbus, 0, LS2H_PCIE_REG_BASE_PORT(busno));
+     /*self header*/
+    sysbus_mmio_map(sysbus, 1, LS2H_PCIE_PORT_HEAD_BASE_PORT(busno));
+     /*devices header*/
+    sysbus_mmio_map(sysbus, 2, LS3H_PCIE_DEV_HEAD_BASE_PORT(busno));
+
+
+    return bus2;
 }
 
 static int bonito_pcihost_initfn(SysBusDevice *dev)
@@ -985,7 +1079,7 @@ static int bonito_pcihost_initfn(SysBusDevice *dev)
     phb->bus = pci_register_bus(DEVICE(dev), "pci",
                                 pci_ls2h_set_irq, pci_ls2h_map_irq, pcihost->pic,
                                 get_system_memory(), get_system_io(),
-                                1<<3, 4);
+                                PCI_DEVFN(10, 0), 4);
 
     return 0;
 }
