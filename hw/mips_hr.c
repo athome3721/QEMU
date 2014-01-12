@@ -36,7 +36,6 @@
 #include "loader.h"
 #include "elf.h"
 #include "sysbus.h"
-#include "synopGMAC.h"
 #include "exec/address-spaces.h"
 #include "ide.h"
 #include "mc146818rtc.h"
@@ -134,10 +133,10 @@ static void mips_ipi_writel (void *opaque, hwaddr addr,
 		 mailboxreg[i][3] = val;
 		break;
 		case R_IMR_MAILBOX_SET_CPU:
-		 qemu_irq_raise(mycpu[i]->irq[4]);
+		 qemu_irq_raise(mycpu[i]->irq[6]);
 		 break;
 		case R_IMR_MAILBOX_CLR_CPU:
-		 qemu_irq_lower(mycpu[i]->irq[4]);
+		 qemu_irq_lower(mycpu[i]->irq[6]);
 		 break;
 		case R_IMR_MAILBOX_MAILBOX0:
 		 mailboxreg[i][0] = val;
@@ -362,7 +361,7 @@ static void mips_hr_init (QEMUMachineInitArgs *args)
 
     /* init CPUs */
     if (cpu_model == NULL) {
-        cpu_model = "godson3";
+        cpu_model = "hr2";
     }
     /* init CPUs */
 {
@@ -417,6 +416,16 @@ static void mips_hr_init (QEMUMachineInitArgs *args)
 	memory_region_add_subregion(address_space_mem, 0, ram);
 #endif
 
+    if (kernel_filename) {
+        loaderparams.ram_size = ram_size;
+        loaderparams.kernel_filename = kernel_filename;
+        loaderparams.kernel_cmdline = kernel_cmdline;
+        loaderparams.initrd_filename = initrd_filename;
+        reset_info[0]->vector = load_kernel();
+	aui_boot_code[6] = (aui_boot_code[6]&0xffff0000)|((reset_info[0]->vector&0xffff0000)>>16);
+	aui_boot_code[7] = (aui_boot_code[7]&0xffff0000)|((reset_info[0]->vector&0xffff));
+    }
+
 
     /* Try to load a BIOS image. If this fails, we continue regardless,
        but initialize the hardware ourselves. When a kernel gets
@@ -467,13 +476,6 @@ static void mips_hr_init (QEMUMachineInitArgs *args)
         g_free(filename);
     }
 
-    if (kernel_filename) {
-        loaderparams.ram_size = ram_size;
-        loaderparams.kernel_filename = kernel_filename;
-        loaderparams.kernel_cmdline = kernel_cmdline;
-        loaderparams.initrd_filename = initrd_filename;
-        reset_info[0]->vector = load_kernel();
-    }
 
 	hr_serial_irq = qemu_allocate_irqs(hr_serial_set_irq, mycpu, 1);
 
