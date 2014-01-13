@@ -1155,9 +1155,9 @@ PCIBus *pci_ls3a_init(qemu_irq *pic, int (*board_map_irq)(int bus,int dev,int fu
 	pci_ls3a_pic = pic;
 	local_board_map_irq = board_map_irq;
 
-	s = pci_register_bus(NULL,"pci",pci_ls3a_set_irq, pci_ls3a_map_irq, pic, get_system_memory(), get_system_io(), 12<<3, 4);
+	s = pci_register_bus(NULL,"pci",pci_ls3a_set_irq, pci_ls3a_map_irq, pic, get_system_memory(), get_system_io(), 1<<3, 4);
 
-	memory_region_init_io(iomem, &pci_ls3a_config_ops, NULL, "ls3a_pci_conf", 0x2000000);
+	memory_region_init_io(iomem, &pci_ls3a_config_ops, s, "ls3a_pci_conf", 0x2000000);
         memory_region_init_alias(iomem1, "ls3a_pci_conf", iomem, 0, 0x2000000);
 	memory_region_add_subregion(get_system_memory(), HT1LO_PCICFG_BASE, iomem);
 	memory_region_add_subregion(get_system_memory(), HT1LO_PCICFG_BASE_ALIAS, iomem1);
