@@ -479,6 +479,7 @@ static void mips_ls3a_init (QEMUMachineInitArgs *args)
 	int be;
 	DriveInfo *dinfo=NULL;
 	int i;
+	PCIBus *pci_bus;
 
 
     /* init CPUs */
@@ -605,7 +606,7 @@ static void mips_ls3a_init (QEMUMachineInitArgs *args)
     isa_mem_base = 0x10000000;
 
 	i8259 = ls3a_intctl_init(isa_bus, mycpu);
-	pci_ls3a_init(&i8259[3],board_map_irq);
+	pci_bus = pci_ls3a_init(&i8259[3],board_map_irq);
 
     /* The PIC is attached to the MIPS CPU INT0 pin */
     isa_bus_irqs(isa_bus, i8259);
@@ -632,6 +633,7 @@ static void mips_ls3a_init (QEMUMachineInitArgs *args)
     }
 	}
 
+        pci_create_simple(pci_bus, -1, "pci6254");
 
     if (drive_get_max_bus(IF_IDE) >= MAX_IDE_BUS) {
         fprintf(stderr, "qemu: too many IDE bus\n");
