@@ -1291,6 +1291,11 @@ static void intel_hda_register_types(void)
 
 type_init(intel_hda_register_types)
 
+int intel_hda_and_codec_init(PCIBus *bus)
+{
+return 0;
+}
+
 #if 0
 /*
  * create intel hda controller with codec attached to it,
