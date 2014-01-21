@@ -1557,6 +1557,7 @@ void *dmactx_ptr;
 };
 qemu_irq irq;
 int receive_stop;
+int buswidth;
 } GMACState;
 
 typedef struct gmac_pci_state {
@@ -1680,7 +1681,7 @@ int pos;
 	}
 	else {
 	/*128bit bus*/
-	s->dma.DmaTxCurrDesc += 16 + (s->dma.DmaBusMode&0x7c)*4;
+	s->dma.DmaTxCurrDesc += 16 + ((s->dma.DmaBusMode&0x7c)>>2)*s->buswidth/8;
 	}
 
 	}
@@ -1877,7 +1878,7 @@ static ssize_t gmac_do_receive(NetClientState *nc, const uint8_t *buf, size_t si
 	}
 	else {
 	/*128bit bus*/
-	s->dma.DmaRxCurrDesc += 16 + (s->dma.DmaBusMode&0x7c)*4;
+	s->dma.DmaRxCurrDesc += 16 + ((s->dma.DmaBusMode&0x7c)>>2)*s->buswidth/8;
 	}
 
 	}
@@ -1983,6 +1984,7 @@ static int pci_gmac_init(PCIDevice *pci_dev)
 static Property gmac_pci_properties[] = {
     DEFINE_NIC_PROPERTIES(gmac_pci_state, gmac.conf),
     DEFINE_PROP_PTR("dma", gmac_pci_state, gmac.dmactx_ptr),
+    DEFINE_PROP_INT32("buswidth", gmac_pci_state, gmac.buswidth, 128),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -2033,6 +2035,7 @@ static int gmac_sysbus_init(SysBusDevice *dev)
 static Property gmac_sysbus_properties[] = {
     DEFINE_NIC_PROPERTIES(gmac_sysbus_state, gmac.conf),
     DEFINE_PROP_PTR("dma", gmac_sysbus_state, gmac.dmactx_ptr),
+    DEFINE_PROP_INT32("buswidth", gmac_sysbus_state, gmac.buswidth, 128),
     DEFINE_PROP_END_OF_LIST(),
 };
 
