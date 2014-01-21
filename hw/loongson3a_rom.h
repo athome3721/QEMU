@@ -8,7 +8,7 @@
 // again.
 //
 
-unsigned int aui_boot_code[] = {
+static unsigned int aui_boot_code[] = {
                // G /tmp/ccRj5ql6.s    page 1
                // 
                // 
