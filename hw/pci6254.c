@@ -15,7 +15,8 @@ int mem;
 uint8_t *mapaddr;
 unsigned int mask;
 qemu_irq irq;
-MemoryRegion ram;
+MemoryRegion ram_vreg;
+MemoryRegion ram_vram;
 } PCI6254State;
 
 typedef struct pci6254_pci_state {
@@ -37,12 +38,15 @@ static void pci6254_reg_init(PCI6254State *s)
 static PCI6254State *pci6254_new(PCI6254State *s)
 {
 	int fd;
-	fd=open("/tmp/shm",O_RDWR);
+	fd=open("/tmp/shm",O_CREAT|O_RDWR, 0666);
+	if(ftruncate(fd, 0x10010000))
+         printf("truncate failed\n");
 	pci6254_reg_init(s);
 
 	s->mapaddr = mmap(NULL,PCI6254_MEM_SIZE,PROT_READ|PROT_WRITE|PROT_EXEC,MAP_SHARED,fd,0);
 
-	memory_region_init_ram_ptr(&s->ram, "vram",  PCI6254_MEM_SIZE, s->mapaddr);
+	memory_region_init_ram_ptr(&s->ram_vreg, "vreg",  PCI6254_MEM_SIZE, s->mapaddr);
+	memory_region_init_ram_ptr(&s->ram_vram, "vram",  PCI6254_MEM_SIZE, s->mapaddr+0x1000);
 	s->mask = PCI6254_MEM_SIZE -1;
 	s->fd = fd;
 
@@ -50,8 +54,8 @@ static PCI6254State *pci6254_new(PCI6254State *s)
 }
 
 
-#define PCI6254_VENDOR_ID  0x0021
-#define PCI6254_DEVICE_ID  0x3388
+#define PCI6254_VENDOR_ID  0x16c3
+#define PCI6254_DEVICE_ID  0xabcd
 
 static int pci_pci6254_init(PCIDevice *dev)
 {
@@ -72,7 +76,8 @@ static int pci_pci6254_init(PCIDevice *dev)
     pci6254_new(&d->pci6254);
 
 
-    pci_register_bar(&d->card, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->pci6254.ram);
+    pci_register_bar(&d->card, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->pci6254.ram_vreg);
+    pci_register_bar(&d->card, 2, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->pci6254.ram_vram);
 
     d->pci6254.irq = d->card.irq[0];
     return 0;
