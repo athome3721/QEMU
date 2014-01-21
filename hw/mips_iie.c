@@ -332,7 +332,7 @@ static void mips_iie_init (QEMUMachineInitArgs *args)
 
 
 	if (serial_hds[0])
-		serial_mm_init(address_space_mem, 0x1fd30000, 0,iie_irq[0],115200,serial_hds[0], DEVICE_NATIVE_ENDIAN);
+		serial_mm_init(address_space_mem, 0x1fd30000, 0,iie_irq[1],115200,serial_hds[0], DEVICE_NATIVE_ENDIAN);
 
 	if (serial_hds[1])
 		serial_mm_init(address_space_mem, 0x1fd40000, 0,iie_irq[1],115200,serial_hds[1], DEVICE_NATIVE_ENDIAN);
@@ -372,7 +372,14 @@ static void mips_iie_init (QEMUMachineInitArgs *args)
 	}
 
 	if (nb_nics) {
-		gmac_sysbus_create(&nd_table[0], 0x1fd90000, iie_irq[10]);
+		DeviceState *dev;
+
+		dev = qdev_create(NULL, "sysbus-synopgmac");
+		qdev_set_nic_properties(dev, &nd_table[0]);
+		qdev_prop_set_int32(dev, "buswidth", 32);
+		qdev_init_nofail(dev);
+		sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, 0x1fd90000);
+		sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0, iie_irq[11]);
 	}
 
 
@@ -515,10 +522,10 @@ static uint64_t iie_intctl_mem_readl(void *opaque, hwaddr addr, unsigned size)
 			ret = ~s->intmask[1] & s->intreg_pending;
 			break;
 		case 12: //finalstatus
-			ret = s->inten[0] & ~s->intmask[0] & s->intreg_pending;
+			ret = s->inten[0] /*& ~s->intmask[0]*/ & s->intreg_pending;
 			break;
 		case 13: //finalstatus
-			ret = s->inten[1] & ~s->intmask[1] & s->intreg_pending;
+			ret = s->inten[1] /*& ~s->intmask[1]*/ & s->intreg_pending;
 			break;
 		default:
 			ret = *(int *)s;
@@ -558,7 +565,7 @@ static void iie_check_interrupts(void *opaque)
 	uint32_t pil_pending;
 
 
-	pil_pending = s->inten[0] & ~s->intmask[0] & s->intreg_pending;
+	pil_pending = s->inten[0] /*& ~s->intmask[0]*/ & s->intreg_pending;
 
 
 	if (pil_pending ) {
