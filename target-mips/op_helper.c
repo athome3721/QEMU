@@ -30,6 +30,11 @@
 static inline void cpu_mips_tlb_flush (CPUMIPSState *env, int flush_global);
 #endif
 
+target_ulong mypc;
+void helper_mypc( target_ulong pc)
+{
+mypc = pc;
+}
 /*****************************************************************************/
 /* Exceptions processing helpers */
 

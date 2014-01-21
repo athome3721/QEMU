@@ -1061,6 +1061,13 @@ static target_ulong gen_opc_btarget[OPC_BUF_SIZE];
     tcg_temp_free_i32(helper_tmp);                                \
     } while(0)
 
+#define gen_helper_1i(name, arg1) do {                      \
+    TCGv helper_tmp = tcg_temp_new(); \
+        tcg_gen_movi_tl(helper_tmp, arg1); \
+    gen_helper_##name(helper_tmp);                          \
+    tcg_temp_free(helper_tmp);                                \
+    } while(0)
+
 typedef struct DisasContext {
     struct TranslationBlock *tb;
     target_ulong pc, saved_pc;
@@ -5160,31 +5167,31 @@ static void gen_mtc0(DisasContext *ctx, TCGv arg, int reg, int sel)
         case 1:
 //            gen_helper_mtc0_performance1(arg);
             rn = "Performance1";
-//            break;
+            break;
         case 2:
 //            gen_helper_mtc0_performance2(arg);
             rn = "Performance2";
-//            break;
+            break;
         case 3:
 //            gen_helper_mtc0_performance3(arg);
             rn = "Performance3";
-//            break;
+            break;
         case 4:
 //            gen_helper_mtc0_performance4(arg);
             rn = "Performance4";
-//            break;
+            break;
         case 5:
 //            gen_helper_mtc0_performance5(arg);
             rn = "Performance5";
-//            break;
+            break;
         case 6:
 //            gen_helper_mtc0_performance6(arg);
             rn = "Performance6";
-//            break;
+            break;
         case 7:
 //            gen_helper_mtc0_performance7(arg);
             rn = "Performance7";
-//            break;
+            break;
         default:
             goto die;
         }
@@ -14414,6 +14421,9 @@ static void decode_opc (CPUMIPSState *env, DisasContext *ctx, int *is_branch)
     rd = (ctx->opcode >> 11) & 0x1f;
     sa = (ctx->opcode >> 6) & 0x1f;
     imm = (int16_t)ctx->opcode;
+
+    gen_helper_1i(mypc, ctx->pc);
+
     switch (op) {
     case OPC_SPECIAL:
         op1 = MASK_SPECIAL(ctx->opcode);
