@@ -442,9 +442,7 @@ return 0;
 static int board_map_irq(int bus,int dev,int func,int pin)
 {
 int irq_num;
-if(dev>=12)
-irq_num=((dev-12)+pin)%4;
-else irq_num=pin;
+    irq_num=pin;
     return irq_num;
 }
 
@@ -606,32 +604,32 @@ static void mips_ls3a_init (QEMUMachineInitArgs *args)
     isa_mem_base = 0x10000000;
 
 	i8259 = ls3a_intctl_init(isa_bus, mycpu);
-	pci_bus = pci_ls3a_init(&i8259[3],board_map_irq);
+	pci_bus = pci_ls3a_init(&i8259[5],board_map_irq);
 
     /* The PIC is attached to the MIPS CPU INT0 pin */
     isa_bus_irqs(isa_bus, i8259);
-    rtc_init(isa_bus, 2000, NULL);
+    //rtc_init(isa_bus, 2000, NULL);
 
 	ls3a_serial_irq = qemu_allocate_irqs(ls3a_serial_set_irq, mycpu, 1);
 
     if (serial_hds[0])
             serial_mm_init(address_space_mem, 0x1fe001e0, 0,ls3a_serial_irq[0],115200,serial_hds[0], DEVICE_NATIVE_ENDIAN);
-    if (serial_hds[1])
-		serial_isa_init(isa_bus, 0, serial_hds[1]);
+    //if (serial_hds[1])
+	//	serial_isa_init(isa_bus, 0, serial_hds[1]);
 
 
-	if (nb_nics) {
-    for(i = 0; i < nb_nics; i++) {
-        NICInfo *nd = &nd_table[i];
-	char devaddr[10];
+	    if (nb_nics) {
+		    for(i = 0; i < nb_nics; i++) {
+			    NICInfo *nd = &nd_table[i];
+			    char devaddr[10];
 
-        if (i == 0 && (!nd->model || strcmp(nd->model, "pcnet") == 0))
-            /* The malta board has a PCNet card using PCI SLOT 11 */
-	sprintf(devaddr,"%x",12+i);
+			    if (i == 0 && (!nd->model || strcmp(nd->model, "pcnet") == 0))
+				    /* The malta board has a PCNet card using PCI SLOT 11 */
+				    sprintf(devaddr,"%x",12+i);
 
-        pci_nic_init_nofail(nd, "e1000", devaddr);
-    }
-	}
+			    pci_nic_init_nofail(nd, "e1000", devaddr);
+		    }
+	    }
 
         pci_create_simple(pci_bus, -1, "pci6254");
 
@@ -650,7 +648,7 @@ static void mips_ls3a_init (QEMUMachineInitArgs *args)
                      hd[MAX_IDE_DEVS * i],
 		     hd[MAX_IDE_DEVS * i + 1]);
 
-    isa_create_simple(isa_bus, "i8042");
+    //isa_create_simple(isa_bus, "i8042");
 {
 char *p;
 MemoryRegion *iomem;
@@ -677,10 +675,34 @@ MemoryRegion *iomem;
 }
 }
 
+static void mips_ls3a_reset(void)
+{
+	PCIBus *bus;
+	PCIDevice *pdev;
+	int devfn;
+	int irqline;
+	qemu_devices_reset();
+	cpu_outb(0x4d0,0xff);
+	cpu_outb(0x4d1,0xff);
+	bus = pci_get_bus_devfn(&devfn, "c");
+	if(bus)
+	{
+		pdev = pci_find_device(bus, 0, devfn);
+		if(pdev)
+		{
+			irqline = pci_get_long(pdev->config + PCI_INTERRUPT_LINE);
+			irqline = (irqline & ~0xff)|5;
+			pci_set_long(pdev->config + PCI_INTERRUPT_LINE, irqline);
+			irqline = pci_get_long(pdev->config + PCI_INTERRUPT_LINE);
+		}
+	}
+}
+
 QEMUMachine mips_godson_machine = {
     .name = "ls3a",
     .desc = "Godson3 Multicore platform",
     .init = mips_ls3a_init,
+    .reset = mips_ls3a_reset,
     .max_cpus = 255,
     DEFAULT_MACHINE_OPTIONS,
 };
