@@ -1662,7 +1662,7 @@ int pos;
 	
 
 	if(desc.DESC_STATUS&DescTxIntEnable)
-	s->dma.DmaStatus |= DmaIntTxCompleted;
+	s->dma.DmaStatus |= DmaIntTxCompleted|DmaIntNormal;
 
 	gmac_check_irq(s);
 
@@ -1856,7 +1856,7 @@ static ssize_t gmac_do_receive(NetClientState *nc, const uint8_t *buf, size_t si
 
 
 	if((desc.length&RxDisIntCompl)==0)
-	s->dma.DmaStatus |= DmaIntRxCompleted;
+	s->dma.DmaStatus |= DmaIntRxCompleted|DmaIntNormal;
 
 	gmac_check_irq(s);
 
