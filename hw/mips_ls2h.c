@@ -72,6 +72,7 @@ static struct _loaderparams {
 static void *boot_params_buf;
 static void *boot_params_p;
 #define align(x) (((x)+15)&~15)
+static int pci_ls2h_map_irq(PCIDevice *d, int irq_num);
 
 
 static void mips_qemu_writel (void *opaque, hwaddr addr,
@@ -319,15 +320,9 @@ static void main_cpu_reset(void *opaque)
 
 static void *ls1a_intctl_init(MemoryRegion *mr, hwaddr addr, qemu_irq parent_irq);
 
-static int board_map_irq(int bus,int dev,int func,int pin)
-{
-	int irq_num=pin;
-	return irq_num;
-}
-
 static const int sector_len = 32 * 1024;
 
-static PCIBus *pcibus_ls2h_init(int busno,qemu_irq *pic, int (*board_map_irq)(int bus,int dev,int func,int pin));
+static PCIBus *pcibus_ls2h_init(int busno,qemu_irq *pic, int (*board_map_irq)(PCIDevice *d, int irq_num));
 
 struct ls2h_dma_struc {
 MemoryRegion iomem;
@@ -481,8 +476,8 @@ static void mips_ls2h_init (QEMUMachineInitArgs *args)
 
 
 	/* Register 64 KB of IO space at 0x1f000000 */
-	isa_mmio_init(0x1ff00000, 0x00010000);
-	isa_mem_base = 0x10000000;
+	//isa_mmio_init(0x1ff00000, 0x00010000);
+	//isa_mem_base = 0x10000000;
 	ls2h_irq =ls1a_intctl_init(get_system_memory(), 0x1Fd00040, env->irq[2]);
 	ls2h_irq1=ls1a_intctl_init(get_system_memory(), 0x1Fd00058, env->irq[3]);
 	ls1a_intctl_init(get_system_memory(), 0x1Fd00070, env->irq[4]);
@@ -512,10 +507,10 @@ static void mips_ls2h_init (QEMUMachineInitArgs *args)
 #endif
 
 
-	pci_bus[0]=pcibus_ls2h_init(0, &ls2h_irq1[6],board_map_irq);
-	pci_bus[1]=pcibus_ls2h_init(1, &ls2h_irq1[6],board_map_irq);
-	pci_bus[2]=pcibus_ls2h_init(2, &ls2h_irq1[6],board_map_irq);
-	pci_bus[3]=pcibus_ls2h_init(3, &ls2h_irq1[6],board_map_irq);
+	pci_bus[0]=pcibus_ls2h_init(0, &ls2h_irq1[20],pci_ls2h_map_irq);
+	pci_bus[1]=pcibus_ls2h_init(1, &ls2h_irq1[21],pci_ls2h_map_irq);
+	pci_bus[2]=pcibus_ls2h_init(2, &ls2h_irq1[22],pci_ls2h_map_irq);
+	pci_bus[3]=pcibus_ls2h_init(3, &ls2h_irq1[23],pci_ls2h_map_irq);
 
 
 	sysbus_create_simple("exynos4210-ehci-usb",0x1fe00000, ls2h_irq1[0]);
@@ -739,14 +734,10 @@ machine_init(mips_machine_init);
 //-------------------------
 // pci bridge
 //-----------------
-static int (*local_board_map_irq)(int bus,int dev,int func,int pin);
 
 static int pci_ls2h_map_irq(PCIDevice *d, int irq_num)
 {
-	int dev=(d->devfn>>3)&0x1f;
-	int func=d->devfn& 7;
-
-	return local_board_map_irq(0,dev,func,irq_num);
+	return irq_num;
 }
 
 static void pci_ls2h_set_irq(void *opaque, int irq_num, int level)
@@ -819,6 +810,13 @@ struct BonitoState {
     PCIHostState parent_obj;
     qemu_irq *pic;
     PCIBonitoState *pci_dev;
+    MemoryRegion iomem_mem;
+    MemoryRegion iomem_submem;
+    MemoryRegion iomem_io;
+    AddressSpace as_mem;
+    AddressSpace as_io;
+    DMAContext dma;
+   int (*pci_map_irq)(PCIDevice *d, int irq_num);
 };
 
 static inline uint32_t bonito_pci_config_addr(PCIBonitoState *s,hwaddr addr)
@@ -1027,7 +1025,7 @@ static const TypeInfo bonito_info = {
 };
 
 
-static PCIBus *pcibus_ls2h_init(int busno, qemu_irq *pic, int (*board_map_irq)(int bus,int dev,int func,int pin))
+static PCIBus *pcibus_ls2h_init(int busno, qemu_irq *pic, int (*board_map_irq)(PCIDevice *d, int irq_num))
 {
     DeviceState *dev;
     BonitoState *pcihost;
@@ -1037,12 +1035,12 @@ static PCIBus *pcibus_ls2h_init(int busno, qemu_irq *pic, int (*board_map_irq)(i
     SysBusDevice *sysbus;
     PCIBridge *br;
     PCIBus *bus2;
-	local_board_map_irq = board_map_irq;
 
     dev = qdev_create(NULL, TYPE_BONITO_PCI_HOST_BRIDGE);
     phb = PCI_HOST_BRIDGE(dev);
     pcihost = BONITO_PCI_HOST_BRIDGE(dev);
     pcihost->pic = pic;
+    pcihost->pci_map_irq = board_map_irq;
     qdev_init_nofail(dev);
 
     /* set the pcihost pointer before bonito_initfn is called */
@@ -1053,7 +1051,7 @@ static PCIBus *pcibus_ls2h_init(int busno, qemu_irq *pic, int (*board_map_irq)(i
     s->pcihost = pcihost;
     pcihost->pci_dev = s;
     br = DO_UPCAST(PCIBridge, dev, d);
-//   pci_bridge_map_irq(br, "Advanced PCI Bus secondary bridge 1", board_map_irq);
+    pci_bridge_map_irq(br, "Advanced PCI Bus secondary bridge 1", board_map_irq);
     qdev_init_nofail(DEVICE(d));
     bus2 = pci_bridge_get_sec_bus(br);
 
@@ -1066,9 +1064,34 @@ static PCIBus *pcibus_ls2h_init(int busno, qemu_irq *pic, int (*board_map_irq)(i
      /*devices header*/
     sysbus_mmio_map(sysbus, 2, LS3H_PCIE_DEV_HEAD_BASE_PORT(busno));
 
+    memory_region_add_subregion(get_system_memory(), 0x10000000UL+busno*0x2000000UL, &pcihost->iomem_submem);
+    memory_region_add_subregion(get_system_memory(), 0x18100000UL+busno*0x400000UL, &pcihost->iomem_io);
+
 
     return bus2;
 }
+
+
+static int pcidma_translate(DMAContext *dma,
+                               dma_addr_t addr,
+                               hwaddr *paddr,
+                               hwaddr *len,
+                               DMADirection dir)
+{
+	dma->as = &address_space_memory;
+	*paddr = addr;
+	*len = 0x10000000;
+    return 0;
+}
+
+static DMAContext *pci_dma_context_fn(PCIBus *bus, void *opaque,
+                                            int devfn)
+{
+    BonitoState *pcihost = opaque;
+
+    return &pcihost->dma;
+}
+
 
 static int bonito_pcihost_initfn(SysBusDevice *dev)
 {
@@ -1076,10 +1099,22 @@ static int bonito_pcihost_initfn(SysBusDevice *dev)
     PCIHostState *phb = PCI_HOST_BRIDGE(dev);
     pcihost = BONITO_PCI_HOST_BRIDGE(dev);
 
+    memory_region_init(&pcihost->iomem_mem, "system", INT32_MAX);
+    address_space_init(&pcihost->as_mem, &pcihost->iomem_mem);
+    pcihost->as_mem.name = "pcie memory";
+    memory_region_init_alias(&pcihost->iomem_submem, "pcisubmem", &pcihost->iomem_mem, 0x10000000, 0x2000000);
+
+    memory_region_init(&pcihost->iomem_io, "system", 0x10000);
+    address_space_init(&pcihost->as_io, &pcihost->iomem_io);
+    pcihost->as_io.name = "pcie io";
+
     phb->bus = pci_register_bus(DEVICE(dev), "pci",
-                                pci_ls2h_set_irq, pci_ls2h_map_irq, pcihost->pic,
-                                get_system_memory(), get_system_io(),
+                                pci_ls2h_set_irq, pcihost->pci_map_irq, pcihost->pic,
+                                &pcihost->iomem_mem, &pcihost->iomem_io,
                                 PCI_DEVFN(10, 0), 4);
+
+    dma_context_init(&pcihost->dma, &address_space_memory, pcidma_translate, NULL, NULL);
+    pci_setup_iommu(phb->bus, pci_dma_context_fn, pcihost);
 
     return 0;
 }
