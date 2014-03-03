@@ -768,6 +768,8 @@ typedef struct PCIBonitoState
     	PCIBridge bridge;
 	BonitoState *pcihost;
 	MemoryRegion iomem;
+	MemoryRegion conf_mem;
+	MemoryRegion data_mem;
 	struct pcilocalreg{
 		/*0*/
 		unsigned int portctr0;
@@ -807,7 +809,8 @@ typedef struct PCIBonitoState
 } PCIBonitoState;
 
 struct BonitoState {
-    PCIHostState parent_obj;
+    SysBusDevice busdev;
+    PCIBus *bus;
     qemu_irq *pic;
     PCIBonitoState *pci_dev;
     MemoryRegion iomem_mem;
@@ -839,7 +842,7 @@ static void pci_ls2h_config_writel (void *opaque, hwaddr addr,
 {
 	PCIBonitoState *s = opaque;
 	//   PCIDevice *d = PCI_DEVICE(s);
-	PCIHostState *phb = PCI_HOST_BRIDGE(s->pcihost);
+	BonitoState *phb = s->pcihost;
 	pci_data_write(phb->bus, bonito_pci_config_addr(s, addr), val, size);
 }
 
@@ -847,7 +850,7 @@ static uint64_t pci_ls2h_config_readl (void *opaque, hwaddr addr, unsigned size)
 {
 	PCIBonitoState *s = opaque;
 	//  PCIDevice *d = PCI_DEVICE(s);
-	PCIHostState *phb = PCI_HOST_BRIDGE(s->pcihost);
+	BonitoState *phb = s->pcihost;
 	uint32_t val;
 	val = pci_data_read(phb->bus, bonito_pci_config_addr(s, addr), size);
 	return val;
@@ -956,7 +959,6 @@ static int bonito_initfn(PCIDevice *dev)
     int rc;
     PCIBonitoState *s = DO_UPCAST(PCIBonitoState, bridge.dev, dev);
     SysBusDevice *sysbus = SYS_BUS_DEVICE(s->pcihost);
-    PCIHostState *phb = PCI_HOST_BRIDGE(s->pcihost);
 
     rc = pci_bridge_initfn(dev);
     if (rc < 0) {
@@ -967,14 +969,14 @@ static int bonito_initfn(PCIDevice *dev)
     sysbus_init_mmio(sysbus, &s->iomem);
 
     /* set the north bridge pci configure  mapping */
-    memory_region_init_io(&phb->conf_mem, &bonito_pciconf_ops, s,
+    memory_region_init_io(&s->conf_mem, &bonito_pciconf_ops, s,
                           "north-bridge-pci-config", 0x100);
-    sysbus_init_mmio(sysbus, &phb->conf_mem);
+    sysbus_init_mmio(sysbus, &s->conf_mem);
 
     /* set the south bridge pci configure  mapping */
-    memory_region_init_io(&phb->data_mem, &pci_ls2h_config_ops, s,
+    memory_region_init_io(&s->data_mem, &pci_ls2h_config_ops, s,
                           "south-bridge-pci-config", 0x100);
-    sysbus_init_mmio(sysbus, &phb->data_mem);
+    sysbus_init_mmio(sysbus, &s->data_mem);
 
     pci_config_set_prog_interface(dev->config, PCI_CLASS_BRDIGE_PCI_INF_SUB);
     /* set the default value of north bridge pci config */
@@ -1029,7 +1031,6 @@ static PCIBus *pcibus_ls2h_init(int busno, qemu_irq *pic, int (*board_map_irq)(P
 {
     DeviceState *dev;
     BonitoState *pcihost;
-    PCIHostState *phb;
     PCIBonitoState *s;
     PCIDevice *d;
     SysBusDevice *sysbus;
@@ -1037,7 +1038,6 @@ static PCIBus *pcibus_ls2h_init(int busno, qemu_irq *pic, int (*board_map_irq)(P
     PCIBus *bus2;
 
     dev = qdev_create(NULL, TYPE_BONITO_PCI_HOST_BRIDGE);
-    phb = PCI_HOST_BRIDGE(dev);
     pcihost = BONITO_PCI_HOST_BRIDGE(dev);
     pcihost->pic = pic;
     pcihost->pci_map_irq = board_map_irq;
@@ -1045,7 +1045,7 @@ static PCIBus *pcibus_ls2h_init(int busno, qemu_irq *pic, int (*board_map_irq)(P
 
     /* set the pcihost pointer before bonito_initfn is called */
     //d = pci_create(phb->bus, PCI_DEVFN(0, 0), "LS2H_Bonito");
-    d = pci_create_multifunction(phb->bus, PCI_DEVFN(0, 0), true, "LS2H_Bonito");
+    d = pci_create_multifunction(pcihost->bus, PCI_DEVFN(0, 0), true, "LS2H_Bonito");
 
     s = DO_UPCAST(PCIBonitoState, bridge.dev, d);
     s->pcihost = pcihost;
@@ -1096,7 +1096,6 @@ static DMAContext *pci_dma_context_fn(PCIBus *bus, void *opaque,
 static int bonito_pcihost_initfn(SysBusDevice *dev)
 {
     BonitoState *pcihost;
-    PCIHostState *phb = PCI_HOST_BRIDGE(dev);
     pcihost = BONITO_PCI_HOST_BRIDGE(dev);
 
     memory_region_init(&pcihost->iomem_mem, "system", INT32_MAX);
@@ -1108,13 +1107,13 @@ static int bonito_pcihost_initfn(SysBusDevice *dev)
     address_space_init(&pcihost->as_io, &pcihost->iomem_io);
     pcihost->as_io.name = "pcie io";
 
-    phb->bus = pci_register_bus(DEVICE(dev), "pci",
+    pcihost->bus = pci_register_bus(DEVICE(dev), "pci",
                                 pci_ls2h_set_irq, pcihost->pci_map_irq, pcihost->pic,
                                 &pcihost->iomem_mem, &pcihost->iomem_io,
                                 PCI_DEVFN(10, 0), 4);
 
     dma_context_init(&pcihost->dma, &address_space_memory, pcidma_translate, NULL, NULL);
-    pci_setup_iommu(phb->bus, pci_dma_context_fn, pcihost);
+    pci_setup_iommu(pcihost->bus, pci_dma_context_fn, pcihost);
 
     return 0;
 }
@@ -1130,7 +1129,7 @@ static void bonito_pcihost_class_init(ObjectClass *klass, void *data)
 
 static const TypeInfo bonito_pcihost_info = {
     .name          = TYPE_BONITO_PCI_HOST_BRIDGE,
-    .parent        = TYPE_PCI_HOST_BRIDGE,
+    .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(BonitoState),
     .class_init    = bonito_pcihost_class_init,
 };
