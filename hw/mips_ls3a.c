@@ -631,6 +631,7 @@ static void mips_ls3a_init (QEMUMachineInitArgs *args)
 		    }
 	    }
 
+        pci_create_simple(pci_bus, 13<<3, "pci-ohci");
         pci_create_simple(pci_bus, -1, "pci6254");
 
     if (drive_get_max_bus(IF_IDE) >= MAX_IDE_BUS) {
@@ -684,16 +685,19 @@ static void mips_ls3a_reset(void)
 	qemu_devices_reset();
 	cpu_outb(0x4d0,0xff);
 	cpu_outb(0x4d1,0xff);
-	bus = pci_get_bus_devfn(&devfn, "c");
+	bus = pci_get_bus_devfn(&devfn, NULL);
 	if(bus)
 	{
-		pdev = pci_find_device(bus, 0, devfn);
-		if(pdev)
+		for(devfn=PCI_DEVFN(12,0);devfn<PCI_DEVFN(14,0);devfn+=PCI_DEVFN(1,0))
 		{
-			irqline = pci_get_long(pdev->config + PCI_INTERRUPT_LINE);
-			irqline = (irqline & ~0xff)|5;
-			pci_set_long(pdev->config + PCI_INTERRUPT_LINE, irqline);
-			irqline = pci_get_long(pdev->config + PCI_INTERRUPT_LINE);
+			pdev = pci_find_device(bus, 0, devfn);
+			if(pdev)
+			{
+				irqline = pci_get_long(pdev->config + PCI_INTERRUPT_LINE);
+				irqline = (irqline & ~0xff)|5;
+				pci_set_long(pdev->config + PCI_INTERRUPT_LINE, irqline);
+				irqline = pci_get_long(pdev->config + PCI_INTERRUPT_LINE);
+			}
 		}
 	}
 }
