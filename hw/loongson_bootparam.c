@@ -91,7 +91,7 @@ struct efi_memory_map_loongson * init_memory_map(void *g_map)
   emap->nr_map = 6; 
 #endif
 
-  emap->mem_freq = 300000000; //300M
+  emap->mem_freq = 266000000; //300M
   //map->memsz_high = atoi(getenv("highmemsize"));
   //map->mem_size = atoi(getenv("memsize"));
   //map->memsz_reserved = 16;
@@ -102,7 +102,7 @@ struct efi_memory_map_loongson * init_memory_map(void *g_map)
   //strcpy(emap->map[0].mem_name, "node0_low");
   emap->map[0].mem_type = 1;
   emap->map[0].mem_start = 0x01000000;
-  emap->map[0].mem_size = atoi(getenv("memsize")) - 96;
+  emap->map[0].mem_size = atoi(getenv("memsize")) - 112;
 #else 
   emap->map[0].node_id = 0;
   //strcpy(emap->map[0].mem_name, "node0_low");
