@@ -111,7 +111,7 @@ typedef struct ResetData {
 } ResetData;
 
 
-#define BOOTPARAM_PHYADDR ((64 << 20))
+#define BOOTPARAM_PHYADDR ((240 << 20))
 #define BOOTPARAM_ADDR (0x80000000+BOOTPARAM_PHYADDR)
 // should set argc,argv
 //env->gpr[REG][env->current_tc]
@@ -391,17 +391,10 @@ static void mips_ls2h_init (QEMUMachineInitArgs *args)
 	memory_region_init_ram(ram, "mips_r4k.ram", ram_size);
 	vmstate_register_ram_global(ram);
 
-	if(ram_size > 0x10000000)
-	{
 	MemoryRegion *ram1 = g_new(MemoryRegion, 1);
 	memory_region_init_alias(ram1, "lowmem", ram, 0, 0x10000000);
 	memory_region_add_subregion(address_space_mem, 0, ram1);
 	memory_region_add_subregion(address_space_mem, 0x100000000ULL, ram);
-	}
-	else
-	{
-	memory_region_add_subregion(address_space_mem, 0, ram);
-	}
 
 #if 1
 /*fix me
@@ -555,6 +548,7 @@ static void mips_ls2h_init (QEMUMachineInitArgs *args)
 #endif
 
 	if (nb_nics) {
+#if 1
 	int i;
 	int devfn;
 		//gmac_sysbus_create(&nd_table[0], 0x1fe10000, ls2h_irq1[3]);
@@ -574,6 +568,10 @@ static void mips_ls2h_init (QEMUMachineInitArgs *args)
 
 	    	printf("nb_nics=%d dev=%p\n", nb_nics, pci_dev);
 	  }
+#else
+		printf("pci_bus=%p\n", pci_bus);
+		gmac_sysbus_create(&nd_table[0], 0x1fe10000, ls2h_irq1[3]);
+#endif
 	}
 
 #if 0
@@ -1026,6 +1024,7 @@ static const TypeInfo bonito_info = {
     .class_init    = bonito_class_init,
 };
 
+static DMAContext *pci_dma_context_fn(PCIBus *bus, void *opaque, int devfn);
 
 static PCIBus *pcibus_ls2h_init(int busno, qemu_irq *pic, int (*board_map_irq)(PCIDevice *d, int irq_num))
 {
@@ -1054,6 +1053,7 @@ static PCIBus *pcibus_ls2h_init(int busno, qemu_irq *pic, int (*board_map_irq)(P
     pci_bridge_map_irq(br, "Advanced PCI Bus secondary bridge 1", board_map_irq);
     qdev_init_nofail(DEVICE(d));
     bus2 = pci_bridge_get_sec_bus(br);
+    pci_setup_iommu(bus2, pci_dma_context_fn, pcihost);
 
 
     sysbus = SYS_BUS_DEVICE(s->pcihost);
@@ -1079,7 +1079,7 @@ static int pcidma_translate(DMAContext *dma,
                                DMADirection dir)
 {
 	dma->as = &address_space_memory;
-	*paddr = addr;
+	*paddr = addr|0x100000000ULL;
 	*len = 0x10000000;
     return 0;
 }
