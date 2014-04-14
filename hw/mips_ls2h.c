@@ -47,6 +47,7 @@
 #include "loongson_bootparam.h"
 #include "pci/pci_bridge.h"
 #include "pci/pci_bus.h"
+#include <stdlib.h>
 
 #define PHYS_TO_VIRT(x) ((x) | ~(target_ulong)0x7fffffff)
 
@@ -74,6 +75,31 @@ static void *boot_params_p;
 #define align(x) (((x)+15)&~15)
 static int pci_ls2h_map_irq(PCIDevice *d, int irq_num);
 
+struct {
+unsigned long long runins;
+unsigned long long pc_low;
+unsigned long long pc_high;
+unsigned int count;
+} __attribute__((packed)) mynet ;
+
+extern void (*mypc_callback)(target_ulong pc);
+
+typedef int mypc;
+mypc *pcbuf;
+int pcbuf_size;
+int pcbuf_pos;
+
+static void mypc_callback_for_net( target_ulong pc)
+{
+	if (pc>=mynet.pc_low && pc<mynet.pc_high)
+	{
+		mynet.runins++;
+		pcbuf[pcbuf_pos] = pc;
+		pcbuf_pos = (pcbuf_pos+1)&(pcbuf_size-1);
+	}
+}
+
+
 
 static void mips_qemu_writel (void *opaque, hwaddr addr,
 		uint64_t val, unsigned size)
@@ -83,7 +109,43 @@ static void mips_qemu_writel (void *opaque, hwaddr addr,
 	{
 		case 0x1fd00210:
 		break;
+		case 0x1fd00800 ... 0x1fd00814:
+		*(int *)((char *)&mynet + (addr-0x1fd00800)) = val;
+		break;
+		case 0x1fd00818:
+		mynet.count = val;
 
+		{
+			int fd, ret;
+			int len1, len2;
+			static int i = 0;
+			static char *filename[10];
+
+			if(filename[i]) unlink(filename[i]);
+			ret=asprintf(&filename[i], "/tmp/pc.sample%d.%d", i%10,(int)val);
+			if(ret==-1) printf("error\n");
+			printf("create file %s\n", filename[i]);
+			fd = open(filename[i],O_CREAT|O_TRUNC|O_WRONLY, 0666);
+			if(pcbuf_size-pcbuf_pos>val)
+			{
+				len1 = val*sizeof(mypc);
+				len2 = 0;
+			}
+			else
+			{
+				len1 =  (pcbuf_size-pcbuf_pos)*sizeof(mypc);
+				len2 = val*sizeof(mypc)-len1;
+			}
+			ret = write(fd, pcbuf + ((pcbuf_size + pcbuf_pos - val)%pcbuf_size), len1);
+			if(len2)
+				ret += write(fd, pcbuf, len2); 	
+
+			if(ret!=val*sizeof(mypc)) printf("error\n");
+			close(fd);
+			i++;
+		}
+
+		break;
 	}
 }
 
@@ -94,6 +156,11 @@ static uint64_t mips_qemu_readl (void *opaque, hwaddr addr, unsigned size)
 	{
 		case 0x1fd00210:
 		return 0x1800;
+		case 0x1fd00800 ... 0x1fd00814:
+		return *(int *)((char *)&mynet + (addr-0x1fd00800));
+		case 0x1fd00818:
+		return 0;
+		break;
 	}
 	return 0;
 }
@@ -675,6 +742,10 @@ static void mips_ls2h_init (QEMUMachineInitArgs *args)
                 MemoryRegion *iomem = g_new(MemoryRegion, 1);
                 memory_region_init_io(iomem, &mips_qemu_ops, (void *)0x1fd00210, "0x1fd00210", 0x4);
                 memory_region_add_subregion(address_space_mem, 0x1fd00210, iomem);
+		/*ins*/
+                iomem = g_new(MemoryRegion, 1);
+                memory_region_init_io(iomem, &mips_qemu_ops, (void *)0x1fd00800, "0x1fd00800", 28);
+                memory_region_add_subregion(address_space_mem, 0x1fd00800, iomem);
 	}
 
 
@@ -693,6 +764,10 @@ static void mips_ls2h_init (QEMUMachineInitArgs *args)
 		qdev_init_nofail(codec);
 	}
 
+	pcbuf_size = 0x100000;
+	pcbuf_pos = 0;
+	pcbuf = malloc(pcbuf_size*sizeof(mypc));
+	mypc_callback =  mypc_callback_for_net;
 }
 
 QEMUMachine mips_ls2h_machine = {
