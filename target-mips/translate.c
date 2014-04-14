@@ -1061,11 +1061,13 @@ static target_ulong gen_opc_btarget[OPC_BUF_SIZE];
     tcg_temp_free_i32(helper_tmp);                                \
     } while(0)
 
-#define gen_helper_1i(name, arg1) do {                      \
+#define gen_helper_2i(name, arg1, arg2) do {                      \
+    TCGv_i32 helper_tmp1 = tcg_const_i32(arg2);                    \
     TCGv helper_tmp = tcg_temp_new(); \
         tcg_gen_movi_tl(helper_tmp, arg1); \
-    gen_helper_##name(helper_tmp);                          \
+    gen_helper_##name(helper_tmp, helper_tmp1);                          \
     tcg_temp_free(helper_tmp);                                \
+    tcg_temp_free(helper_tmp1);                                \
     } while(0)
 
 typedef struct DisasContext {
@@ -14422,7 +14424,7 @@ static void decode_opc (CPUMIPSState *env, DisasContext *ctx, int *is_branch)
     sa = (ctx->opcode >> 6) & 0x1f;
     imm = (int16_t)ctx->opcode;
 
-    gen_helper_1i(mypc, ctx->pc);
+    gen_helper_2i(mypc, ctx->pc, ctx->opcode);
 
     switch (op) {
     case OPC_SPECIAL:

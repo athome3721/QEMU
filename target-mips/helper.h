@@ -692,7 +692,7 @@ DEF_HELPER_FLAGS_3(dmthlip, 0, void, tl, tl, env)
 DEF_HELPER_FLAGS_3(wrdsp, 0, void, tl, tl, env)
 DEF_HELPER_FLAGS_2(rddsp, 0, tl, tl, env)
 
-DEF_HELPER_1(mypc, void,tl)
+DEF_HELPER_2(mypc, void, tl, i32)
 
 
 

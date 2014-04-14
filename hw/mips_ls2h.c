@@ -79,22 +79,138 @@ struct {
 unsigned long long runins;
 unsigned long long pc_low;
 unsigned long long pc_high;
+unsigned long long skb;
+unsigned long long skb_data;
+unsigned long long stack;
 unsigned int count;
 } __attribute__((packed)) mynet ;
 
-extern void (*mypc_callback)(target_ulong pc);
+extern void (*mypc_callback)(target_ulong pc, uint32_t opcode);
 
-typedef int mypc;
+typedef struct {
+int pc;
+unsigned long long addr;
+} __attribute__((packed)) mypc;
 mypc *pcbuf;
 int pcbuf_size;
 int pcbuf_pos;
 
-static void mypc_callback_for_net( target_ulong pc)
+#define MASK_OP_MAJOR(op)  (op & (0x3F << 26))
+
+enum {
+    /* indirect opcode tables */
+    OPC_SPECIAL  = (0x00 << 26),
+    OPC_REGIMM   = (0x01 << 26),
+    OPC_CP0      = (0x10 << 26),
+    OPC_CP1      = (0x11 << 26),
+    OPC_CP2      = (0x12 << 26),
+    OPC_CP3      = (0x13 << 26),
+    OPC_SPECIAL2 = (0x1C << 26),
+    OPC_SPECIAL3 = (0x1F << 26),
+    /* arithmetic with immediate */
+    OPC_ADDI     = (0x08 << 26),
+    OPC_ADDIU    = (0x09 << 26),
+    OPC_SLTI     = (0x0A << 26),
+    OPC_SLTIU    = (0x0B << 26),
+    /* logic with immediate */
+    OPC_ANDI     = (0x0C << 26),
+    OPC_ORI      = (0x0D << 26),
+    OPC_XORI     = (0x0E << 26),
+    OPC_LUI      = (0x0F << 26),
+    /* arithmetic with immediate */
+    OPC_DADDI    = (0x18 << 26),
+    OPC_DADDIU   = (0x19 << 26),
+    /* Jump and branches */
+    OPC_J        = (0x02 << 26),
+    OPC_JAL      = (0x03 << 26),
+    OPC_JALS     = OPC_JAL | 0x5,
+    OPC_BEQ      = (0x04 << 26),  /* Unconditional if rs = rt = 0 (B) */
+    OPC_BEQL     = (0x14 << 26),
+    OPC_BNE      = (0x05 << 26),
+    OPC_BNEL     = (0x15 << 26),
+    OPC_BLEZ     = (0x06 << 26),
+    OPC_BLEZL    = (0x16 << 26),
+    OPC_BGTZ     = (0x07 << 26),
+    OPC_BGTZL    = (0x17 << 26),
+    OPC_JALX     = (0x1D << 26),  /* MIPS 16 only */
+    OPC_JALXS    = OPC_JALX | 0x5,
+    /* Load and stores */
+    OPC_LDL      = (0x1A << 26),
+    OPC_LDR      = (0x1B << 26),
+    OPC_LB       = (0x20 << 26),
+    OPC_LH       = (0x21 << 26),
+    OPC_LWL      = (0x22 << 26),
+    OPC_LW       = (0x23 << 26),
+    OPC_LWPC     = OPC_LW | 0x5,
+    OPC_LBU      = (0x24 << 26),
+    OPC_LHU      = (0x25 << 26),
+    OPC_LWR      = (0x26 << 26),
+    OPC_LWU      = (0x27 << 26),
+    OPC_SB       = (0x28 << 26),
+    OPC_SH       = (0x29 << 26),
+    OPC_SWL      = (0x2A << 26),
+    OPC_SW       = (0x2B << 26),
+    OPC_SDL      = (0x2C << 26),
+    OPC_SDR      = (0x2D << 26),
+    OPC_SWR      = (0x2E << 26),
+    OPC_LL       = (0x30 << 26),
+    OPC_LLD      = (0x34 << 26),
+    OPC_LD       = (0x37 << 26),
+    OPC_LDPC     = OPC_LD | 0x5,
+    OPC_SC       = (0x38 << 26),
+    OPC_SCD      = (0x3C << 26),
+    OPC_SD       = (0x3F << 26),
+    /* Floating point load/store */
+    OPC_LWC1     = (0x31 << 26),
+    OPC_LWC2     = (0x32 << 26),
+    OPC_LDC1     = (0x35 << 26),
+    OPC_LDC2     = (0x36 << 26),
+    OPC_SWC1     = (0x39 << 26),
+    OPC_SWC2     = (0x3A << 26),
+    OPC_SDC1     = (0x3D << 26),
+    OPC_SDC2     = (0x3E << 26),
+    /* MDMX ASE specific */
+    OPC_MDMX     = (0x1E << 26),
+    /* Cache and prefetch */
+    OPC_CACHE    = (0x2F << 26),
+    OPC_PREF     = (0x33 << 26),
+    /* Reserved major opcode */
+    OPC_MAJOR3B_RESERVED = (0x3B << 26),
+};
+
+static void mypc_callback_for_net( target_ulong pc, uint32_t opcode)
 {
+	CPUMIPSState *env = cpu_single_env;
+	int rs, imm;
 	if (pc>=mynet.pc_low && pc<mynet.pc_high)
 	{
 		mynet.runins++;
-		pcbuf[pcbuf_pos] = pc;
+		pcbuf[pcbuf_pos].pc = pc;
+
+		switch(MASK_OP_MAJOR(opcode))
+		{
+			/* MIPS64 opcodes */
+			case OPC_LWU:
+			case OPC_LD:
+			case OPC_SD:
+			case OPC_LW:
+			case OPC_LH:
+			case OPC_LHU:
+			case OPC_LB:
+			case OPC_LBU:
+			case OPC_SW:
+			case OPC_SH:
+			case OPC_SB:
+				rs = (opcode >> 21) & 0x1f;
+				//rt = (opcode >> 16) & 0x1f;
+				imm = (int16_t)opcode;
+				pcbuf[pcbuf_pos].addr = env->active_tc.gpr[rs]+imm; 
+				break;
+			default:
+				pcbuf[pcbuf_pos].addr = 0;
+				break;
+		}
+
 		pcbuf_pos = (pcbuf_pos+1)&(pcbuf_size-1);
 	}
 }
@@ -109,10 +225,10 @@ static void mips_qemu_writel (void *opaque, hwaddr addr,
 	{
 		case 0x1fd00210:
 		break;
-		case 0x1fd00800 ... 0x1fd00814:
+		case 0x1fd00800 ... 0x1fd0082c:
 		*(int *)((char *)&mynet + (addr-0x1fd00800)) = val;
 		break;
-		case 0x1fd00818:
+		case 0x1fd00830:
 		mynet.count = val;
 
 		{
@@ -126,6 +242,7 @@ static void mips_qemu_writel (void *opaque, hwaddr addr,
 			if(ret==-1) printf("error\n");
 			printf("create file %s\n", filename[i]);
 			fd = open(filename[i],O_CREAT|O_TRUNC|O_WRONLY, 0666);
+			ret = write (fd, &mynet.skb,24);
 			if(pcbuf_size-pcbuf_pos>val)
 			{
 				len1 = val*sizeof(mypc);
@@ -156,9 +273,9 @@ static uint64_t mips_qemu_readl (void *opaque, hwaddr addr, unsigned size)
 	{
 		case 0x1fd00210:
 		return 0x1800;
-		case 0x1fd00800 ... 0x1fd00814:
+		case 0x1fd00800 ... 0x1fd0082c:
 		return *(int *)((char *)&mynet + (addr-0x1fd00800));
-		case 0x1fd00818:
+		case 0x1fd00830:
 		return 0;
 		break;
 	}
@@ -744,7 +861,7 @@ static void mips_ls2h_init (QEMUMachineInitArgs *args)
                 memory_region_add_subregion(address_space_mem, 0x1fd00210, iomem);
 		/*ins*/
                 iomem = g_new(MemoryRegion, 1);
-                memory_region_init_io(iomem, &mips_qemu_ops, (void *)0x1fd00800, "0x1fd00800", 28);
+                memory_region_init_io(iomem, &mips_qemu_ops, (void *)0x1fd00800, "0x1fd00800", 0x34);
                 memory_region_add_subregion(address_space_mem, 0x1fd00800, iomem);
 	}
 
