@@ -598,7 +598,7 @@ static const mips_def_t mips_defs[] =
         .CP0_Config3 = MIPS_CONFIG3 | (1 << CP0C3_LPA),
         .SYNCI_Step = 32,
         .CCRes = 2,
-        .CP0_Status_rw_bitmask = 0x36FBFFFF,
+        .CP0_Status_rw_bitmask = 0x76FBFFFF,
         .CP1_fcr0 = (1 << FCR0_F64) | (1 << FCR0_3D) | (1 << FCR0_PS) |
                     (1 << FCR0_L) | (1 << FCR0_W) | (1 << FCR0_D) |
                     (1 << FCR0_S) | (0x00 << FCR0_PRID) | (0x0 << FCR0_REV),
@@ -625,7 +625,7 @@ static const mips_def_t mips_defs[] =
         .CP0_Config3 = MIPS_CONFIG3 | (1 << CP0C3_LPA),
         .SYNCI_Step = 32,
         .CCRes = 2,
-        .CP0_Status_rw_bitmask = 0x36FBFFFF,
+        .CP0_Status_rw_bitmask = 0x76FBFFFF,
         .CP1_fcr0 = (1 << FCR0_F64) | (1 << FCR0_3D) | (1 << FCR0_PS) |
                     (1 << FCR0_L) | (1 << FCR0_W) | (1 << FCR0_D) |
                     (1 << FCR0_S) | (0x00 << FCR0_PRID) | (0x0 << FCR0_REV),
