@@ -15481,8 +15481,29 @@ static void decode_opc (CPUMIPSState *env, DisasContext *ctx, int *is_branch)
 
     /* COP2.  */
     case OPC_LWC2:
-    case OPC_LDC2:
+	{
+	int offset = ((ctx->opcode >> 6)&0x1ff)<<4;
+	int rq =  ctx->opcode & 0x1f;
+    	int rs = (ctx->opcode >> 21) & 0x1f;
+    	int rt = (ctx->opcode >> 16) & 0x1f;
+        gen_ld(ctx, OPC_LD, rt, rs, offset);
+        gen_ld(ctx, OPC_LD, rq, rs, offset+8);
+	}
+
+	break;
     case OPC_SWC2:
+	{
+	int offset = ((ctx->opcode >> 6)&0x1ff)<<4;
+	int rq =  ctx->opcode & 0x1f;
+    	int rs = (ctx->opcode >> 21) & 0x1f;
+    	int rt = (ctx->opcode >> 16) & 0x1f;
+        gen_st(ctx, OPC_SD, rt, rs, offset);
+        gen_st(ctx, OPC_SD, rq, rs, offset+8);
+	}
+
+	break;
+
+    case OPC_LDC2:
     case OPC_SDC2:
         /* COP2: Not implemented. */
         generate_exception_err(ctx, EXCP_CpU, 2);
