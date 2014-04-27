@@ -646,7 +646,7 @@ static int bonito_initfn(PCIDevice *dev)
 
     /* set the south bridge pci configure  mapping */
     memory_region_init_io(&phb->data_mem, &pci_ls2f_config_ops, s,
-                          "south-bridge-pci-config", 0x100);
+                          "south-bridge-pci-config", 0x80000);
     sysbus_init_mmio(sysbus, &phb->data_mem);
     sysbus_mmio_map(sysbus, 2, 0x1fe80000);
 
