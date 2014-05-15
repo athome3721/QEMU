@@ -31,6 +31,7 @@ typedef struct LS1APciState {
 	DMAContext dma_ahci;
 	DMAContext dma_gmac;
 	DMAContext dma_nand;
+	DMAContext dma_ac97;
 	AddressSpace as;
 	void *ls1a;
 	union{
@@ -300,6 +301,16 @@ static int ls1adma_nand_translate(DMAContext *dma,
     return ls1adma_translate(s, dma, addr, paddr, len, dir);
 }
 
+static int ls1adma_ac97_translate(DMAContext *dma,
+                               dma_addr_t addr,
+                               hwaddr *paddr,
+                               hwaddr *len,
+                               DMADirection dir)
+{
+    LS1APciState *s = container_of (dma, LS1APciState, dma_ac97);
+    return ls1adma_translate(s, dma, addr, paddr, len, dir);
+}
+
 
 static int ls1a_initfn(PCIDevice *dev)
 {
@@ -343,6 +354,7 @@ static int ls1a_initfn(PCIDevice *dev)
     dma_context_init(&d->dma_ahci, &d->as, ls1adma_ahci_translate, NULL, NULL);
     dma_context_init(&d->dma_gmac, &d->as, ls1adma_gmac_translate, NULL, NULL);
     dma_context_init(&d->dma_nand, &d->as, ls1adma_nand_translate, NULL, NULL);
+    dma_context_init(&d->dma_ac97, &d->as, ls1adma_ac97_translate, NULL, NULL);
 
     memory_region_add_subregion(&d->iomem_root, 0x1c200000, &d->iomem_dc0);
     memory_region_add_subregion(&d->iomem_root, 0x1f000000, &d->iomem_axi0);
@@ -516,6 +528,7 @@ static int ls1a_initfn(PCIDevice *dev)
 		SysBusDevice *s;
 		hwaddr devaddr =  0x00e74000;
 		dev=sysbus_create_varargs("ls1a_ac97", -1, ls1a_irq[14], ls1a_irq[15], NULL);
+		qdev_prop_set_ptr(dev, "dma", &d->dma_ac97);
 		s =  SYS_BUS_DEVICE(dev);
 		s->mmio[0].addr = devaddr;
 		memory_region_add_subregion(&d->iomem_axi, devaddr, s->mmio[0].memory);

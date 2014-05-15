@@ -626,7 +626,7 @@ static int dma_next(AC97State *s,struct dma_desc *desc,int irq)
 
 		if(desc->ordered & DMA_ORDER_EN)
 		{
-			dma_memory_read(s->dma, (desc->ordered & ~DMA_ORDER_EN)&0x0fffffff ,(uint8_t *)desc,4*7);
+			dma_memory_read(s->dma, desc->ordered & ~DMA_ORDER_EN ,(uint8_t *)desc,4*7);
 			desc->left = desc->length * 4;
 			desc->step_times--;
 		}
