@@ -62,6 +62,10 @@ typedef struct AC97State{
 	uint32_t dma_o_mode;
 	uint32_t dma_int_status;
 	uint32_t dma_int_mask;
+	union{
+	DMAContext *dma;
+	void *dma_ptr;
+	};
 
 
     uint32_t glob_cnt;
@@ -622,13 +626,13 @@ static int dma_next(AC97State *s,struct dma_desc *desc,int irq)
 
 		if(desc->ordered & DMA_ORDER_EN)
 		{
-			cpu_physical_memory_read((desc->ordered & ~DMA_ORDER_EN)&0x0fffffff ,(uint8_t *)desc,4*7);
+			dma_memory_read(s->dma, (desc->ordered & ~DMA_ORDER_EN)&0x0fffffff ,(uint8_t *)desc,4*7);
 			desc->left = desc->length * 4;
 			desc->step_times--;
 		}
 		else if(desc->nextaddr)
 		{
-			cpu_physical_memory_read(desc->nextaddr, (uint8_t *)desc,4*7);
+			dma_memory_read(s->dma, desc->nextaddr, (uint8_t *)desc,4*7);
 			desc->nextaddr = 0;
 			desc->left = desc->length * 4;
 		}
@@ -673,7 +677,7 @@ static int write_audio (AC97State *s, int index,
     while (temp) {
         int copied;
         to_copy = audio_MIN (temp, sizeof (tmpbuf));
-        cpu_physical_memory_read (addr, tmpbuf, to_copy);
+        dma_memory_read (s->dma, addr, tmpbuf, to_copy);
         copied = AUD_write (s->voice_po, tmpbuf, to_copy);
         dolog ("write_audio max=%x to_copy=%x copied=%x\n",
                max, to_copy, copied);
@@ -734,7 +738,7 @@ static int read_audio (AC97State *s, int index,
             *stop = 1;
             break;
         }
-        cpu_physical_memory_write (addr, tmpbuf, acquired);
+        dma_memory_write (s->dma, addr, tmpbuf, acquired);
         temp -= acquired;
         addr += acquired;
         nread += acquired;
@@ -957,7 +961,7 @@ void ls1a_ac97_play_set_dmaaddr(uint32_t val)
 
 		if(val & 0x8)
 		{
-		cpu_physical_memory_read(dmaaddr,(void *)&s->dma_read_desc,4*7);
+		dma_memory_read(s->dma, dmaaddr,(void *)&s->dma_read_desc,4*7);
 		s->dma_read_desc.left = s->dma_read_desc.length * 4;
 		s->dma_read_desc.step_times--;
 		s->dma_read_desc.active = 1;
@@ -973,7 +977,7 @@ void ls1a_ac97_play_set_dmaaddr(uint32_t val)
 
 		if(val & 0x4)
 		{
-		cpu_physical_memory_write(dmaaddr,(void *)&s->dma_read_desc,4*7);
+		dma_memory_write(s->dma, dmaaddr,(void *)&s->dma_read_desc,4*7);
 		}
 }
 
@@ -985,7 +989,7 @@ void ls1a_ac97_rec_set_dmaaddr(uint32_t val)
 
 		if(val & 0x8)
 		{
-		cpu_physical_memory_read(dmaaddr,(void *)&s->dma_write_desc,4*7);
+		dma_memory_read(s->dma, dmaaddr,(void *)&s->dma_write_desc,4*7);
 		s->dma_write_desc.left = s->dma_write_desc.length * 4;
 		s->dma_write_desc.step_times--;
 		s->dma_write_desc.active = 1;
@@ -1000,7 +1004,7 @@ void ls1a_ac97_rec_set_dmaaddr(uint32_t val)
 		
 		if(val & 0x4)
 		{
-		cpu_physical_memory_write(dmaaddr,(void *)&s->dma_write_desc,4*7);
+		dma_memory_write(s->dma, dmaaddr,(void *)&s->dma_write_desc,4*7);
 		}
 }
 
@@ -1018,6 +1022,11 @@ static int ac97_sysbus_init(SysBusDevice *dev)
     return 0;
 }
 
+static Property ls1a_ac97_properties[] = {
+    DEFINE_PROP_PTR("dma", ac97_sysbus_state, ac97.dma_ptr),
+    DEFINE_PROP_END_OF_LIST(),
+};
+
 static void ac97_sysbus_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -1025,6 +1034,7 @@ static void ac97_sysbus_class_init(ObjectClass *klass, void *data)
 
     k->init = ac97_sysbus_init;
     dc->desc = "ls1a ac97";
+    dc->props = ls1a_ac97_properties;
 }
 
 static const TypeInfo ac97_sysbus_info = {
