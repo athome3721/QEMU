@@ -37,6 +37,7 @@ typedef struct {
     uint8_t ibmr;
     uint8_t data;
     qemu_irq irq;
+    int shift;
 } ls1a_i2c_state;
 
 #define IBMR	0x80	/* I2C Bus Monitor register */
@@ -57,8 +58,7 @@ static uint64_t ls1a_i2c_read(void *opaque, hwaddr addr, unsigned size)
 {
     ls1a_i2c_state *s = (ls1a_i2c_state *) opaque;
 
-    addr &= 0xf;
-    switch (addr) {
+    switch ((addr>>s->shift)&0xf) {
     case REG_I2C_PRER_LO:
 	 return s->prer_lo;
 
@@ -108,8 +108,7 @@ static void ls1a_i2c_write(void *opaque, hwaddr addr, uint64_t value, unsigned s
     ls1a_i2c_state *s = (ls1a_i2c_state *) opaque;
     int ack = 0;
 
-    addr &= 0xf;
-    switch (addr) {
+    switch ((addr>>s->shift)&0xf) {
     case REG_I2C_CR:
 	  if(value & I2C_C_IACK)
 		  s->status &= ~I2C_S_IF;
@@ -172,7 +171,7 @@ static int ls1a_i2c_init(SysBusDevice *dev)
 {
     ls1a_i2c_state *d = FROM_SYSBUS(ls1a_i2c_state, dev);
 
-    memory_region_init_io(&d->iomem, &ls1a_i2c_ops, (void *)d, "ls1a i2c", 0x8);
+    memory_region_init_io(&d->iomem, &ls1a_i2c_ops, (void *)d, "ls1a i2c", 0x8<<d->shift);
 
     sysbus_init_irq(dev, &d->irq);
     sysbus_init_mmio(dev, &d->iomem);
@@ -181,6 +180,10 @@ static int ls1a_i2c_init(SysBusDevice *dev)
     return 0;
 }
 
+static Property ls1a_i2c_properties[] = {
+    DEFINE_PROP_INT32("shift", ls1a_i2c_state, shift, 0),
+    DEFINE_PROP_END_OF_LIST(),
+};
 
 static void ls1a_i2c_class_init(ObjectClass *klass, void *data)
 {
@@ -188,6 +191,7 @@ static void ls1a_i2c_class_init(ObjectClass *klass, void *data)
     SysBusDeviceClass *k = SYS_BUS_DEVICE_CLASS(klass);
 
     k->init = ls1a_i2c_init;
+    dc->props = ls1a_i2c_properties;
     dc->desc = "ls1a i2c";
 }
 
