@@ -576,8 +576,11 @@ static int ls1a_initfn(PCIDevice *dev)
 		SysBusDevice *s;
 		void *bus;
 		hwaddr devaddr =  0x00e58000;
-		dev=sysbus_create_simple("ls1a_i2c", -1, ls1a_irq[17]);
-		s =  SYS_BUS_DEVICE(dev);
+		dev = qdev_create(NULL, "ls1a_i2c");
+		qdev_prop_set_int32(dev, "shift", 2);
+		s = SYS_BUS_DEVICE(dev);
+		qdev_init_nofail(dev);
+		sysbus_connect_irq(s, 0, ls1a_irq[17]);
 		s->mmio[0].addr = devaddr;
 		memory_region_add_subregion(&d->iomem_axi, devaddr, s->mmio[0].memory);
 		bus = qdev_get_child_bus(dev, "i2c");
