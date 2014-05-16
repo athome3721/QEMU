@@ -384,7 +384,7 @@ static int ls1a_initfn(PCIDevice *dev)
 
     {
 	    MemoryRegion *i8042 = g_new(MemoryRegion, 1);
-	    i8042_mm_init(ls1a_irq[12], ls1a_irq[11], i8042, 0x10, 0x4);
+	    i8042_mm_init(ls1a_irq[12], ls1a_irq[11], i8042, 0x20, 0x10);
 	    memory_region_add_subregion(&d->iomem_axi, 0x00e60000, i8042);
     }
 	{
