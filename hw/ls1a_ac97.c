@@ -1015,6 +1015,9 @@ static int ac97_sysbus_init(SysBusDevice *dev)
 
     ac97_new(&d->ac97);
 
+    if(!d->ac97.dma)
+    d->ac97.dma = &dma_context_memory;
+
     sysbus_init_mmio(dev, &d->ac97.codec);
     sysbus_init_irq(dev, &d->ac97.irq[0]);
     sysbus_init_irq(dev, &d->ac97.irq[1]);
