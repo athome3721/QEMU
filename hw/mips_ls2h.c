@@ -556,7 +556,7 @@ DMAContext dma;
 AddressSpace as;
 } ls2h_dma;
 
-#if 0
+#if 1
 static int ls2hdma_translate(DMAContext *dma,
                                dma_addr_t addr,
                                hwaddr *paddr,
@@ -564,7 +564,8 @@ static int ls2hdma_translate(DMAContext *dma,
                                DMADirection dir)
 {
 	dma->as = &address_space_memory;
-	*paddr = addr&0x1fffffff;
+	*paddr = addr|0x100000000ULL;
+	*len = 0x10000000;
     return 0;
 }
 #endif
@@ -622,27 +623,10 @@ static void mips_ls2h_init (QEMUMachineInitArgs *args)
 	memory_region_add_subregion(address_space_mem, 0, ram1);
 	memory_region_add_subregion(address_space_mem, 0x100000000ULL, ram);
 
-#if 1
-/*fix me
- current ahci code use address_space_memory
-*/
-	{
-	int dma_size;
-	dma_size = ram_size > 0x10000000? 0x10000000: ram_size;
-	MemoryRegion *ram1 = g_new(MemoryRegion, 1);
-	memory_region_init_alias(ram1, "dma mem", ram, 0, dma_size);
-	memory_region_add_subregion(address_space_mem, 0x40000000, ram1);
-	}
-#else
-	memory_region_init(&ls2h_dma.iomem, "system", ram_size);
-	address_space_init(&ls2h_dma.as, &ls2h_dma.iomem);
-	address_space_memory.name = "ls2h dma memory";
-	dma_context_init(&ls2h_dma.dma, &ls2h_dma.as, ls2hdma_translate, NULL, NULL);
-	MemoryRegion *ram1 = g_new(MemoryRegion, 1);
-	memory_region_init_alias(ram1, "dma ram", ram, 0, ram_size);
-	memory_region_add_subregion(&ls2h_dma.iomem, 0, ram1);
-	memory_region_add_subregion(address_space_mem, 0x40000000, &ls2h_dma.iomem);
-#endif
+	//memory_region_init(&ls2h_dma.iomem, "system", ram_size);
+	//address_space_init(&ls2h_dma.as, &ls2h_dma.iomem);
+	//address_space_memory.name = "ls2h dma memory";
+	dma_context_init(&ls2h_dma.dma, &address_space_memory, ls2hdma_translate, NULL, NULL);
 
 	//memory_region_init_io(iomem, &mips_qemu_ops, NULL, "mips-qemu", 0x10000);
 	//memory_region_add_subregion(address_space_mem, 0x1fbf0000, iomem);
@@ -732,12 +716,23 @@ static void mips_ls2h_init (QEMUMachineInitArgs *args)
 	pci_bus[3]=pcibus_ls2h_init(3, &ls2h_irq1[23],pci_ls2h_map_irq);
 
 
-	sysbus_create_simple("exynos4210-ehci-usb",0x1fe00000, ls2h_irq1[0]);
+	{
+		DeviceState *dev;
+		dev = qdev_create(NULL, "exynos4210-ehci-usb");
+		qdev_prop_set_ptr(dev, "dma", &ls2h_dma.dma);
+		qdev_init_nofail(dev);
+		sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, 0x1fe00000);
+		sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0, ls2h_irq1[0]);
+
+		//dev = sysbus_create_simple("sysbus-ohci", 0x1fe08000, ls2h_irq1[1]);
+	}
+
 	{
 		DeviceState *dev;
 		dev = qdev_create(NULL, "sysbus-ohci");
 		qdev_prop_set_uint32(dev, "num-ports", 4);
 		qdev_prop_set_taddr(dev, "dma-offset", 0);
+		qdev_prop_set_ptr(dev, "dma", &ls2h_dma.dma);
 		qdev_init_nofail(dev);
 		sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, 0x1fe08000);
 		sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0, ls2h_irq1[1]);
@@ -751,7 +746,7 @@ static void mips_ls2h_init (QEMUMachineInitArgs *args)
 		DriveInfo *hd;
 		dev = qdev_create(NULL, "sysbus-ahci");
 		qdev_prop_set_uint32(dev, "num-ports", 1);
-		//qdev_prop_set_ptr(dev, "dma", &ls2h_dma.dma);
+		qdev_prop_set_ptr(dev, "dma", &ls2h_dma.dma);
 		qdev_init_nofail(dev);
 		sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, 0x1fe30000);
 		sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0, ls2h_irq1[5]);
