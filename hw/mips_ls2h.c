@@ -63,7 +63,7 @@ static const int ide_irq[2] = { 14, 15 };
 /* i8254 PIT is attached to the IRQ0 at PIC i8259 */
 
 static struct _loaderparams {
-    int ram_size;
+    unsigned long long ram_size;
     const char *kernel_filename;
     const char *kernel_cmdline;
     const char *initrd_filename;
@@ -178,10 +178,30 @@ enum {
     OPC_MAJOR3B_RESERVED = (0x3B << 26),
 };
 
+enum {
+    OPC_MFC0     = (0x00 << 21) | OPC_CP0,
+    OPC_DMFC0    = (0x01 << 21) | OPC_CP0,
+    OPC_MTC0     = (0x04 << 21) | OPC_CP0,
+    OPC_DMTC0    = (0x05 << 21) | OPC_CP0,
+    OPC_MFTR     = (0x08 << 21) | OPC_CP0,
+    OPC_RDPGPR   = (0x0A << 21) | OPC_CP0,
+    OPC_MFMC0    = (0x0B << 21) | OPC_CP0,
+    OPC_MTTR     = (0x0C << 21) | OPC_CP0,
+    OPC_WRPGPR   = (0x0E << 21) | OPC_CP0,
+    OPC_C0       = (0x10 << 21) | OPC_CP0,
+    OPC_C0_FIRST = (0x10 << 21) | OPC_CP0,
+    OPC_C0_LAST  = (0x1F << 21) | OPC_CP0,
+};
+
+/* Coprocessor 0 (rs field) */
+#define MASK_CP0(op)       MASK_OP_MAJOR(op) | (op & (0x1F << 21))
+static int oldstatus;
+
 static void mypc_callback_for_net( target_ulong pc, uint32_t opcode)
 {
 	CPUMIPSState *env = cpu_single_env;
 	int rs, imm;
+    	//uint32_t op, op1, op2;
 	if (pc>=mynet.pc_low && pc<mynet.pc_high)
 	{
 		mynet.runins++;
@@ -213,6 +233,28 @@ static void mypc_callback_for_net( target_ulong pc, uint32_t opcode)
 
 		pcbuf_pos = (pcbuf_pos+1)&(pcbuf_size-1);
 	}
+
+#if 0
+	switch(MASK_OP_MAJOR(opcode))
+	{
+	 case OPC_CP0:
+        op1 = MASK_CP0(opcode);
+        switch (op1) {
+        case OPC_MTC0:
+	}
+	}
+#endif
+
+#define ST0_CU2			0x40000000
+#if 0
+ if(!(env->CP0_Status&ST0_CU2) && (oldstatus&ST0_CU2))
+ {
+	printf("\r\nerror on 0x%llx\r\n", (long long)pc);
+	exit(0);
+ }
+#endif
+ oldstatus = env->CP0_Status;
+
 }
 
 
@@ -343,8 +385,8 @@ static int set_bootparam(ram_addr_t initrd_offset,long initrd_size)
 	*parg_env++=0;
 
 	//env
-	sprintf(memenv,"memsize=%d",loaderparams.ram_size>=0xf000000?240:(loaderparams.ram_size>>20));
-	sprintf(highmemenv,"highmemsize=%d",loaderparams.ram_size>0x10000000?(loaderparams.ram_size>>20)-256:0);
+	sprintf(memenv,"memsize=%lld",loaderparams.ram_size>=0xf000000?240:(loaderparams.ram_size>>20));
+	sprintf(highmemenv,"highmemsize=%lld",loaderparams.ram_size>0x10000000?(loaderparams.ram_size>>20)-256:0);
 
 
 	for(i=0;i<sizeof(pmonenv)/sizeof(char *);i++)
@@ -409,8 +451,8 @@ static int set_bootparam1(ram_addr_t initrd_offset,long initrd_size)
 
 	//env
 
-	sprintf(memenv,"%d",loaderparams.ram_size>0xf000000?240:(loaderparams.ram_size>>20));
-	sprintf(highmemenv,"%d",loaderparams.ram_size>0x10000000?(loaderparams.ram_size>>20)-256:0);
+	sprintf(memenv,"%lld",loaderparams.ram_size>0xf000000?240:(loaderparams.ram_size>>20));
+	sprintf(highmemenv,"%lld",loaderparams.ram_size>0x10000000?(loaderparams.ram_size>>20)-256:0);
 	setenv("memsize", memenv, 1);
 	setenv("highmemsize", highmemenv, 1);
 
