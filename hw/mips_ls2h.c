@@ -267,6 +267,8 @@ static void mips_qemu_writel (void *opaque, hwaddr addr,
 	{
 		case 0x1fd00210:
 		break;
+		case 0x1fd00220:
+		break;
 		case 0x1fd00800 ... 0x1fd0082c:
 		*(int *)((char *)&mynet + (addr-0x1fd00800)) = val;
 		break;
@@ -314,7 +316,9 @@ static uint64_t mips_qemu_readl (void *opaque, hwaddr addr, unsigned size)
 	switch(addr)
 	{
 		case 0x1fd00210:
-		return 0x1800;
+		return 0x049bbf00;
+		case 0x1fd00220:
+		return 0x08521120;
 		case 0x1fd00800 ... 0x1fd0082c:
 		return *(int *)((char *)&mynet + (addr-0x1fd00800));
 		case 0x1fd00830:
@@ -541,6 +545,7 @@ static void main_cpu_reset(void *opaque)
 	env->active_tc.gpr[4]=loaderparams.a0;
 	env->active_tc.gpr[5]=loaderparams.a1;
 	env->active_tc.gpr[6]=loaderparams.a2;
+	env->CP0_Status = (1 << CP0St_BEV) | (1 << CP0St_ERL) | (1<<CP0St_SR);
 }
 
 
@@ -896,6 +901,9 @@ static void mips_ls2h_init (QEMUMachineInitArgs *args)
                 MemoryRegion *iomem = g_new(MemoryRegion, 1);
                 memory_region_init_io(iomem, &mips_qemu_ops, (void *)0x1fd00210, "0x1fd00210", 0x4);
                 memory_region_add_subregion(address_space_mem, 0x1fd00210, iomem);
+                iomem = g_new(MemoryRegion, 1);
+                memory_region_init_io(iomem, &mips_qemu_ops, (void *)0x1fd00220, "0x1fd00220", 0x4);
+                memory_region_add_subregion(address_space_mem, 0x1fd00220, iomem);
 		/*ins*/
                 iomem = g_new(MemoryRegion, 1);
                 memory_region_init_io(iomem, &mips_qemu_ops, (void *)0x1fd00800, "0x1fd00800", 0x34);
