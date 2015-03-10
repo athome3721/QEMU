@@ -4839,6 +4839,8 @@ static void gen_mtc0(DisasContext *ctx, TCGv arg, int reg, int sel)
             gen_helper_mtc0_context(cpu_env, arg);
             rn = "Context";
             break;
+	case 2:
+	    break;
         case 1:
 //            gen_helper_mtc0_contextconfig(cpu_env, arg); /* SmartMIPS ASE */
             rn = "ContextConfig";
