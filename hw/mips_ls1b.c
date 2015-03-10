@@ -309,7 +309,10 @@ static void mips_ls1b_init (QEMUMachineInitArgs *args)
 	memory_region_init_ram(ram, "mips_r4k.ram", ram_size);
 	vmstate_register_ram_global(ram);
 
-	memory_region_add_subregion(address_space_mem, 0, ram);
+	MemoryRegion *ram1 = g_new(MemoryRegion, 1);
+	memory_region_init_alias(ram1, "lowmem", ram, 0, 0x10000000);
+	memory_region_add_subregion(address_space_mem, 0, ram1);
+	memory_region_add_subregion(address_space_mem, 0x40000000ULL, ram);
 
 	//memory_region_init_io(iomem, &mips_qemu_ops, NULL, "mips-qemu", 0x10000);
 	//memory_region_add_subregion(address_space_mem, 0x1fbf0000, iomem);
@@ -348,11 +351,14 @@ static void mips_ls1b_init (QEMUMachineInitArgs *args)
     }
 
     if (kernel_filename) {
+	uint64_t vector;
         loaderparams.ram_size = ram_size;
         loaderparams.kernel_filename = kernel_filename;
         loaderparams.kernel_cmdline = kernel_cmdline;
         loaderparams.initrd_filename = initrd_filename;
-        reset_info->vector = load_kernel();
+        vector = load_kernel();
+	if(vector)
+        reset_info->vector = vector;
     }
 
 

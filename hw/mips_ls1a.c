@@ -358,11 +358,14 @@ static void mips_ls1a_init (QEMUMachineInitArgs *args)
     }
 
     if (kernel_filename) {
+	uint64_t vector;
         loaderparams.ram_size = ram_size;
         loaderparams.kernel_filename = kernel_filename;
         loaderparams.kernel_cmdline = kernel_cmdline;
         loaderparams.initrd_filename = initrd_filename;
-        reset_info->vector = load_kernel();
+        vector = load_kernel();
+	if(vector)
+        reset_info->vector = vector;
     }
 
 
