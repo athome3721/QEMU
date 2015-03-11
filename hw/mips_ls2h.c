@@ -389,7 +389,7 @@ static int set_bootparam(ram_addr_t initrd_offset,long initrd_size)
 	*parg_env++=0;
 
 	//env
-	sprintf(memenv,"memsize=%lld",loaderparams.ram_size>=0xf000000?240:(loaderparams.ram_size>>20));
+	sprintf(memenv,"memsize=%lld",(loaderparams.ram_size>=0xf000000?240:(loaderparams.ram_size>>20))-16-1);
 	sprintf(highmemenv,"highmemsize=%lld",loaderparams.ram_size>0x10000000?(loaderparams.ram_size>>20)-256:0);
 
 
@@ -455,7 +455,7 @@ static int set_bootparam1(ram_addr_t initrd_offset,long initrd_size)
 
 	//env
 
-	sprintf(memenv,"%lld",loaderparams.ram_size>0xf000000?240:(loaderparams.ram_size>>20));
+	sprintf(memenv,"%lld",(loaderparams.ram_size>0xf000000?240:(loaderparams.ram_size>>20))-16-1);
 	sprintf(highmemenv,"%lld",loaderparams.ram_size>0x10000000?(loaderparams.ram_size>>20)-256:0);
 	setenv("memsize", memenv, 1);
 	setenv("highmemsize", highmemenv, 1);
@@ -774,7 +774,7 @@ static void mips_ls2h_init (QEMUMachineInitArgs *args)
 #endif
 
 	if (nb_nics) {
-#if 1
+#if 0
 	int i;
 	int devfn;
 		//gmac_sysbus_create(&nd_table[0], 0x1fe10000, ls2h_irq1[3]);
