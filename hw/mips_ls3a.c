@@ -601,6 +601,7 @@ static void mips_ls3a_init (QEMUMachineInitArgs *args)
     isa_bus = isa_bus_new(NULL, get_system_io());
     /* Register 64 KB of ISA IO space at 0x14000000 */
     isa_mmio_init(0xefdfc000000LL, 0x00010000);
+    isa_mmio_init(0x18000000LL, 0x00010000);
     isa_mem_base = 0x10000000;
 
 	i8259 = ls3a_intctl_init(isa_bus, mycpu);
@@ -609,13 +610,14 @@ static void mips_ls3a_init (QEMUMachineInitArgs *args)
     /* The PIC is attached to the MIPS CPU INT0 pin */
     isa_bus_irqs(isa_bus, i8259);
     //rtc_init(isa_bus, 2000, NULL);
+    isa_create_simple(isa_bus, "i8042");
 
 	ls3a_serial_irq = qemu_allocate_irqs(ls3a_serial_set_irq, mycpu, 1);
 
+    if (serial_hds[1])
+            serial_mm_init(address_space_mem, 0x1fe001e0, 0,ls3a_serial_irq[1],115200,serial_hds[1], DEVICE_NATIVE_ENDIAN);
     if (serial_hds[0])
-            serial_mm_init(address_space_mem, 0x1fe001e0, 0,ls3a_serial_irq[0],115200,serial_hds[0], DEVICE_NATIVE_ENDIAN);
-    //if (serial_hds[1])
-	//	serial_isa_init(isa_bus, 0, serial_hds[1]);
+            serial_mm_init(address_space_mem, 0x180003f8, 0,i8259[1],115200,serial_hds[0], DEVICE_NATIVE_ENDIAN);
 
 
 	    if (nb_nics) {
