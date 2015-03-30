@@ -144,7 +144,7 @@ static int get_physical_address (CPUMIPSState *env, hwaddr *physical,
         }
     } else if (address < 0xC000000000000000ULL) {
         /* xkphys */
-        if (kernel_mode /*&& KX*/ &&
+        if (kernel_mode && (KX || env->CP0_PRid == 0x6303) &&
             (address & 0x07FFFFFFFFFFFFFFULL) <= env->PAMask) {
             *physical = address & env->PAMask;
             *prot = PAGE_READ | PAGE_WRITE;
