@@ -90,7 +90,7 @@ ISADevice *i8259_init_chip(const char *name, ISABus *bus, bool master)
     dev = isa_create(bus, name);
     qdev_prop_set_uint32(&dev->qdev, "iobase", master ? 0x20 : 0xa0);
     qdev_prop_set_uint32(&dev->qdev, "elcr_addr", master ? 0x4d0 : 0x4d1);
-    qdev_prop_set_uint8(&dev->qdev, "elcr_mask", master ? 0xf8 : 0xde);
+    qdev_prop_set_uint8(&dev->qdev, "elcr_mask", master ? 0xff : 0xff);
     qdev_prop_set_bit(&dev->qdev, "master", master);
     qdev_init_nofail(&dev->qdev);
 
