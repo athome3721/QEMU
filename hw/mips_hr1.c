@@ -101,7 +101,7 @@ static void mips_qemu_writel (void *opaque, hwaddr addr,
 	switch(addr)
 	{
 		case SERIAL1(0x34):
-		qemu_chr_fe_write(serial_hds[0], (void *)&val, 1);
+		qemu_chr_fe_write(serial_hds[1], (void *)&val, 1);
 		 break;
 		case SERIAL1(0x28):
 		break;
@@ -534,8 +534,11 @@ static void mips_hr1_init (QEMUMachineInitArgs *args)
                 MemoryRegion *iomem = g_new(MemoryRegion, 1);
                 memory_region_init_io(iomem, &mips_qemu_ops, (void *)(0x18000000 + 0xb0000 + 0), "serial", 0x80);
                 memory_region_add_subregion(address_space_mem, (0x18000000 + 0xb0000 + 0), iomem);
-        qemu_chr_add_handlers(serial_hds[0], serial_can_receive, serial_receive, serial_event, serial_hds[0]);
+	if (serial_hds[1])
+        qemu_chr_add_handlers(serial_hds[1], serial_can_receive, serial_receive, serial_event, serial_hds[1]);
 	}
+	if (serial_hds[0])
+		serial_mm_init(address_space_mem, 0x1fe00000, 0,env->irq[4],115200,serial_hds[0], DEVICE_NATIVE_ENDIAN);
 	{
                 MemoryRegion *iomem = g_new(MemoryRegion, 1);
                 memory_region_init_io(iomem, &mips_ipi_ops, (void *)0, "0x1f078100", 0x40);
