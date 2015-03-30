@@ -614,10 +614,10 @@ static void mips_ls3a_init (QEMUMachineInitArgs *args)
 
 	ls3a_serial_irq = qemu_allocate_irqs(ls3a_serial_set_irq, mycpu, 1);
 
-    if (serial_hds[1])
-            serial_mm_init(address_space_mem, 0x1fe001e0, 0,ls3a_serial_irq[1],115200,serial_hds[1], DEVICE_NATIVE_ENDIAN);
     if (serial_hds[0])
-            serial_mm_init(address_space_mem, 0x180003f8, 0,i8259[1],115200,serial_hds[0], DEVICE_NATIVE_ENDIAN);
+            serial_mm_init(address_space_mem, 0x1fe001e0, 0,ls3a_serial_irq[0],115200,serial_hds[0], DEVICE_NATIVE_ENDIAN);
+    if (serial_hds[1])
+            serial_mm_init(address_space_mem, 0x180003f8, 0,i8259[3],115200,serial_hds[1], DEVICE_NATIVE_ENDIAN);
 
 
 	    if (nb_nics) {
@@ -1059,6 +1059,12 @@ static void *ls3a_intctl_init(ISABus *isa_bus,CPUMIPSState *env[])
                 MemoryRegion *iomem = g_new(MemoryRegion, 1);
                 memory_region_init_io(iomem, &ls3a_intctl_ops, a_htirq, "ls3a_intctl", 256);
                 memory_region_add_subregion(get_system_memory(), HT_CONTROL_REGS_BASE, iomem);
+	}
+
+	{
+                MemoryRegion *iomem = g_new(MemoryRegion, 1);
+                memory_region_init_io(iomem, &ls3a_intctl_ops, a_htirq, "ls3a_intctl", 256);
+                memory_region_add_subregion(get_system_memory(), 0x1e000000, iomem);
 	}
 
 
