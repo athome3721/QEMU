@@ -65,6 +65,16 @@ static struct _loaderparams {
 	const char *initrd_filename;
 } loaderparams;
 
+extern void (*mypc_callback)(target_ulong pc, uint32_t opcode);
+
+static unsigned long long ins;
+static void mypc_callback_for_net( target_ulong pc, uint32_t opcode)
+{
+ins++;
+//if((ins&0xffffff)==0) printf("ins=0x%llx\n", ins);
+}
+
+
 static void mips_qemu_writel (void *opaque, hwaddr addr,
 		uint64_t val, unsigned size)
 {
@@ -84,6 +94,8 @@ static uint64_t mips_qemu_readl (void *opaque, hwaddr addr, unsigned size)
 		case 0x1fda0004:
 			return 1;
 			break;
+		case 0x1e000000:
+		return *(int *)((char *)&ins + (addr-0x1e000000));
 	}
 	return 0;
 }
@@ -426,7 +438,14 @@ static void mips_iie_init (QEMUMachineInitArgs *args)
                 memory_region_add_subregion(address_space_mem, 0x1fda0000, iomem);
 	}
 
+	{
+                MemoryRegion *iomem = g_new(MemoryRegion, 1);
+                memory_region_init_io(iomem, &mips_qemu_ops, (void *)0x1e000000, "ddr controler", 0x8);
+                memory_region_add_subregion(address_space_mem, 0x1e000000, iomem);
+	}
 
+
+	mypc_callback =  mypc_callback_for_net;
 }
 
 QEMUMachine mips_iie_machine = {
