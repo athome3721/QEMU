@@ -453,6 +453,45 @@ static void ls3a_serial_set_irq(void *opaque, int irq, int level)
 	qemu_set_irq(mycpu[i]->irq[2],level);
 }
 
+#define MASK_OP_MAJOR(op)  (op & (0x3F << 26))
+/* Coprocessor 0 (rs field) */
+#define MASK_CP0(op)       MASK_OP_MAJOR(op) | (op & (0x1F << 21))
+static int oldstatus;
+
+enum {
+    /* Cache and prefetch */
+    OPC_CACHE    = (0x2F << 26),
+};
+
+extern void (*mypc_callback)(target_ulong pc, uint32_t opcode);
+static void mypc_callback_ls3a(target_ulong pc, uint32_t opcode)
+{
+	CPUMIPSState *env = cpu_single_env;
+#if 1
+	switch(MASK_OP_MAJOR(opcode))
+	{
+	 case OPC_CACHE:
+	printf("\r\ncache ops on 0x%llx\r\n", (long long)pc);
+        target_disas(stdout, env, pc, 4, 0);
+	 break;
+	}
+#endif
+
+#define ST0_CU2			0x40000000
+#define ST0_KX			0x80
+#if 1
+ if(!(env->CP0_Status&ST0_KX) && (oldstatus&ST0_KX))
+ {
+	printf("\r\nerror on 0x%llx\r\n", (long long)pc);
+	exit(0);
+ }
+#endif
+ oldstatus = env->CP0_Status;
+}
+
+
+void pci_simplevga_init(PCIBus *bus,int width,int height,int depth,const char *type);
+
 PCIBus *pci_ls3a_init(qemu_irq *pic, int (*board_map_irq)(int bus,int dev,int func,int pin));
 static void *ls3a_intctl_init(ISABus *isa_bus, CPUMIPSState *env[]);
 static const int sector_len = 32 * 1024;
@@ -635,6 +674,7 @@ static void mips_ls3a_init (QEMUMachineInitArgs *args)
 
         pci_create_simple(pci_bus, 13<<3, "pci-ohci");
         pci_create_simple(pci_bus, -1, "pci6254");
+	pci_simplevga_init(pci_bus,800,600,16,"none");
 
     if (drive_get_max_bus(IF_IDE) >= MAX_IDE_BUS) {
         fprintf(stderr, "qemu: too many IDE bus\n");
@@ -676,6 +716,7 @@ MemoryRegion *iomem;
   	p = memory_region_get_ram_ptr(iomem);
 	memset(p,0,0x800);
 }
+mypc_callback = mypc_callback_ls3a;
 }
 
 static void mips_ls3a_reset(void)
