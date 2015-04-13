@@ -1223,11 +1223,30 @@ static const MemoryRegionOps pci_ls3a_config_ops = {
 			.endianness = DEVICE_NATIVE_ENDIAN,
 };
 
+static int pcidma_translate(DMAContext *dma,
+                               dma_addr_t addr,
+                               hwaddr *paddr,
+                               hwaddr *len,
+                               DMADirection dir)
+{
+	*paddr = (addr>=0x80000000 && addr<0x90000000)?(addr&0x0fffffff):addr;
+	*len = 0x10000000;
+    return 0;
+}
+
+static DMAContext *pci_dma_context_fn(PCIBus *bus, void *opaque,
+                                            int devfn)
+{
+    return (DMAContext *)opaque;
+}
+
+
 PCIBus *pci_ls3a_init(qemu_irq *pic, int (*board_map_irq)(int bus,int dev,int func,int pin))
 {
 	PCIBus *s;
 	MemoryRegion *iomem = g_new(MemoryRegion, 1);
 	MemoryRegion *iomem1 = g_new(MemoryRegion, 1);
+	DMAContext *dma = g_new(DMAContext, 1);
 
 	pci_ls3a_pic = pic;
 	local_board_map_irq = board_map_irq;
@@ -1239,6 +1258,8 @@ PCIBus *pci_ls3a_init(qemu_irq *pic, int (*board_map_irq)(int bus,int dev,int fu
 	memory_region_add_subregion(get_system_memory(), HT1LO_PCICFG_BASE, iomem);
 	memory_region_add_subregion(get_system_memory(), HT1LO_PCICFG_BASE_ALIAS, iomem1);
 
+    dma_context_init(dma, &address_space_memory, pcidma_translate, NULL, NULL);
+    pci_setup_iommu(s, pci_dma_context_fn, dma);
 
 	return s;
 }
