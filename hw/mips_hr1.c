@@ -80,6 +80,7 @@ static char serial_rfifo[FMAX];
 static char serial_xfifo[FMAX];
 static int rhead,rtail,rcnt;
 static int xhead,xtail,xcnt;
+static int xie,rie;
 static void *iie_intctl_init(MemoryRegion *mr, hwaddr addr, qemu_irq parent_irq);
 static QEMUTimer *serial_timer;
 
@@ -115,9 +116,24 @@ static QEMUTimer *serial_timer;
 #define S_INTENABLE1_TOI	6
 #define M_INTENABLE1_TOI	(0x1 << S_INTENABLE1_TOI)
 
+#define S_INTENABLE0_TE		0
+#define M_INTENABLE0_TE		(0x1 << S_INTENABLE0_TE)
+#define S_INTENABLE0_THE	1
+#define M_INTENABLE0_THE	(0x1 << S_INTENABLE0_THE)
+
+static void serial_checkirq(void *opaque)
+{
+
+	if(xie && !xcnt)
+		qemu_irq_raise(intctl0_irqs[12]);
+	else if(rie && rcnt)
+		qemu_irq_raise(intctl0_irqs[12]);
+	else
+		qemu_irq_lower(intctl0_irqs[12]);
+}
+
 static void serial_receive(void *opaque, const uint8_t *buf, int size)
 {
-		qemu_irq_raise(intctl0_irqs[12]);
 
 	while(rcnt<FMAX && size)
 	{
@@ -126,6 +142,7 @@ static void serial_receive(void *opaque, const uint8_t *buf, int size)
 		rcnt++;
 		size--;
 	}
+        serial_checkirq(opaque);
 }
 
 static int serial_can_receive(void *opaque)
@@ -145,7 +162,6 @@ static void serial_put(void *opaque, int val)
         {
           qemu_mod_timer(serial_timer, qemu_get_clock_ns(vm_clock) + get_ticks_per_sec() / 9600*8);
         }
-          qemu_irq_raise(intctl0_irqs[12]);
 
 	if(xcnt<FMAX)
 	{
@@ -153,6 +169,7 @@ static void serial_put(void *opaque, int val)
 		if(xhead==FMAX) xhead=0;
 		xcnt++;
 	}
+        serial_checkirq(opaque);
 
 }
 
@@ -165,9 +182,8 @@ static int serial_get(void *opaque)
 		rcnt--;
 		rtail++;
 		if(rtail==FMAX) rtail = 0;
-                if(!rcnt)
-		qemu_irq_lower(intctl0_irqs[12]);
 	}
+        serial_checkirq(opaque);
 	return c;
 }
 
@@ -185,8 +201,7 @@ static void serial_send_timer_cb(void *opaque)
 	if(xcnt)
           qemu_mod_timer(serial_timer, qemu_get_clock_ns(vm_clock) + get_ticks_per_sec() / 9600*8);
 
-       if(xcnt) qemu_irq_raise(intctl0_irqs[12]);
-       else qemu_irq_lower(intctl0_irqs[12]);
+        serial_checkirq(opaque);
 }
 
 
@@ -200,6 +215,14 @@ static void mips_qemu_writel (void *opaque, hwaddr addr,
                 serial_put(opaque,val);
 		 break;
 		case SERIAL1(0x28):
+		break;
+		case SERIAL1(0x14):
+                  xie = val;
+        serial_checkirq(opaque);
+		break;
+		case SERIAL1(0x18):
+                  rie = val;
+        serial_checkirq(opaque);
 		break;
 		case 0x1f088008:
 			configdata = val;
@@ -228,6 +251,10 @@ static uint64_t mips_qemu_readl (void *opaque, hwaddr addr, unsigned size)
 		case SERIAL1(0x2c):
                     rf = rcnt?M_STATUS1_RBF:0;
 		      return rf;
+		case SERIAL1(0x14):
+                    return xie;
+		case SERIAL1(0x18):
+                     return rie;
 		break;
 	}
 	return 0;
