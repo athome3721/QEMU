@@ -71,26 +71,122 @@ static struct _loaderparams {
 
 #include "hr_rom.h"
 #define SERIAL1(x) (0x18000000 + 0xb0000 + x)
+
+static qemu_irq *intctl0_irqs;
 static int configdata = -1;
 
-static char serial_fifo[1];
-static int serial_full;
+#define FMAX 16
+static char serial_rfifo[FMAX];
+static char serial_xfifo[FMAX];
+static int rhead,rtail,rcnt;
+static int xhead,xtail,xcnt;
+static void *iie_intctl_init(MemoryRegion *mr, hwaddr addr, qemu_irq parent_irq);
+static QEMUTimer *serial_timer;
+
+#define S_STATUS0_TE		0
+#define M_STATUS0_TE		(0x1 << S_STATUS0_TE)
+#define S_STATUS0_THE		1
+#define M_STATUS0_THE		(0x1 << S_STATUS0_THE)
+#define S_STATUS0_TF		2
+#define M_STATUS0_TF		(0x1 << S_STATUS0_TF)
+#define S_STATUS0_NKD		3
+#define M_STATUS0_NKD		(0x1 << S_STATUS0_NKD)
+
+#define S_STATUS1_RBF		0
+#define M_STATUS1_RBF		(0x1 << S_STATUS1_RBF)
+
+#define S_RXIE_RBE			0
+#define M_RXIE_RBE			(0x1 << S_RXIE_RBE)
+#define S_RXIE_RHF			1
+#define M_RXIE_RHF			(0x1 << S_RXIE_RHF)
+
+#define S_INTENABLE1_RBE	0
+#define M_INTENABLE1_RBE	(0x1 << S_INTENABLE1_RBE)
+#define S_INTENABLE1_RHF	1
+#define M_INTENABLE1_RHF	(0x1 << S_INTENABLE1_RHF)
+#define S_INTENABLE1_PE		2
+#define M_INTENABLE1_PE		(0x1 << S_INTENABLE1_PE)
+#define S_INTENABLE1_FE		3
+#define M_INTENABLE1_FE		(0x1 << S_INTENABLE1_FE)
+#define S_INTENABLE1_OE		4
+#define M_INTENABLE1_OE		(0x1 << S_INTENABLE1_OE)
+#define S_INTENABLE1_TNE	5
+#define M_INTENABLE1_TNE	(0x1 << S_INTENABLE1_TNE)
+#define S_INTENABLE1_TOI	6
+#define M_INTENABLE1_TOI	(0x1 << S_INTENABLE1_TOI)
 
 static void serial_receive(void *opaque, const uint8_t *buf, int size)
 {
+		qemu_irq_raise(intctl0_irqs[12]);
 
-    serial_fifo[0] = *buf;
-    serial_full = 1;
+	while(rcnt<FMAX && size)
+	{
+		serial_rfifo[rhead++] = *buf++;
+		if(rhead==FMAX) rhead=0;
+		rcnt++;
+		size--;
+	}
 }
 
 static int serial_can_receive(void *opaque)
 {
 
-    return !serial_full;
+    return rcnt<FMAX;
 }
 
 static void serial_event(void *opaque, int event)
 {
+}
+
+static void serial_put(void *opaque, int val)
+{
+
+	if(!xcnt)
+        {
+          qemu_mod_timer(serial_timer, qemu_get_clock_ns(vm_clock) + get_ticks_per_sec() / 9600*8);
+        }
+          qemu_irq_raise(intctl0_irqs[12]);
+
+	if(xcnt<FMAX)
+	{
+		serial_xfifo[xhead++] = val;
+		if(xhead==FMAX) xhead=0;
+		xcnt++;
+	}
+
+}
+
+static int serial_get(void *opaque)
+{
+	char c;
+	c = serial_rfifo[rtail];
+	if(rcnt)
+	{
+		rcnt--;
+		rtail++;
+		if(rtail==FMAX) rtail = 0;
+                if(!rcnt)
+		qemu_irq_lower(intctl0_irqs[12]);
+	}
+	return c;
+}
+
+static void serial_send_timer_cb(void *opaque)
+{
+ int val;
+	if(xcnt)
+        {
+		val = serial_xfifo[xtail++];
+		if(xtail == FMAX) xtail = 0;
+                xcnt--;
+		qemu_chr_fe_write(serial_hds[1], (void *)&val, 1);
+        }
+
+	if(xcnt)
+          qemu_mod_timer(serial_timer, qemu_get_clock_ns(vm_clock) + get_ticks_per_sec() / 9600*8);
+
+       if(xcnt) qemu_irq_raise(intctl0_irqs[12]);
+       else qemu_irq_lower(intctl0_irqs[12]);
 }
 
 
@@ -101,7 +197,7 @@ static void mips_qemu_writel (void *opaque, hwaddr addr,
 	switch(addr)
 	{
 		case SERIAL1(0x34):
-		qemu_chr_fe_write(serial_hds[1], (void *)&val, 1);
+                serial_put(opaque,val);
 		 break;
 		case SERIAL1(0x28):
 		break;
@@ -116,6 +212,7 @@ static void mips_qemu_writel (void *opaque, hwaddr addr,
 
 static uint64_t mips_qemu_readl (void *opaque, hwaddr addr, unsigned size)
 {
+        int tf,te,rf;
 	addr=((hwaddr)(long)opaque) + addr;
 	switch(addr)
 	{
@@ -123,12 +220,14 @@ static uint64_t mips_qemu_readl (void *opaque, hwaddr addr, unsigned size)
 			return configdata;
 			break;
 		case SERIAL1(0x20):
-			serial_full = 0;
-		     return serial_fifo[0];
+		     return serial_get(opaque);
 		case SERIAL1(0x28):
-		      return 1;
+                    tf =  (xcnt==FMAX)?M_STATUS0_TF:0;
+                    te = xcnt?0:M_STATUS0_TE;
+		      return tf|te;
 		case SERIAL1(0x2c):
-		      return serial_full;
+                    rf = rcnt?M_STATUS1_RBF:0;
+		      return rf;
 		break;
 	}
 	return 0;
@@ -524,6 +623,7 @@ static void mips_hr1_init (QEMUMachineInitArgs *args)
         g_free(filename);
     }
 
+        intctl0_irqs = iie_intctl_init(address_space_mem, 0x18020000, env->irq[2]);
 
 	{
                 MemoryRegion *iomem = g_new(MemoryRegion, 1);
@@ -535,7 +635,11 @@ static void mips_hr1_init (QEMUMachineInitArgs *args)
                 memory_region_init_io(iomem, &mips_qemu_ops, (void *)(0x18000000 + 0xb0000 + 0), "serial", 0x80);
                 memory_region_add_subregion(address_space_mem, (0x18000000 + 0xb0000 + 0), iomem);
 	if (serial_hds[1])
+        {
         qemu_chr_add_handlers(serial_hds[1], serial_can_receive, serial_receive, serial_event, serial_hds[1]);
+         serial_timer = qemu_new_timer_ns(vm_clock, (QEMUTimerCB *) serial_send_timer_cb, serial_hds[1]);
+         qemu_mod_timer(serial_timer, qemu_get_clock_ns(vm_clock) + get_ticks_per_sec() / 9600*8);
+        }
 	}
 	if (serial_hds[0])
 		serial_mm_init(address_space_mem, 0x1fe00000, 0,env->irq[4],115200,serial_hds[0], DEVICE_NATIVE_ENDIAN);
@@ -552,6 +656,236 @@ static void mips_hr1_init (QEMUMachineInitArgs *args)
 	}
 
 	mypc_callback =  mypc_callback_hr1;
+}
+
+
+
+
+//-----------------
+
+//#define DEBUG_IRQ
+
+#ifdef DEBUG_IRQ
+#define DPRINTF(fmt, args...) \
+	do { printf("IRQ: " fmt , ##args); } while (0)
+#else
+#define DPRINTF(fmt, args...)
+#endif
+
+typedef struct GS232_INTCTLState {
+	uint32_t inten[2];
+	uint32_t intmask[2];
+	uint32_t intforce[2];
+	uint32_t rawstatus[2];
+	uint32_t status[2];
+	uint32_t maskstatus[2];
+	uint32_t finalstatus[2];
+	uint32_t irq_vector[16];
+	uint32_t reserve;
+	uint32_t fiq_inten;
+	uint32_t fiq_intmask;
+	uint32_t fiq_intforce;
+	uint32_t fiq_rawstatus;
+	uint32_t fiq_status;
+	uint32_t fiq_finalstatus;
+	uint32_t irq_plevel;
+	uint32_t reserve1;
+	uint32_t version;
+	uint32_t reserve2;
+	uint32_t irq_pr[1]; 
+	uint32_t irq_vector_default; 
+
+	qemu_irq cpu_irq;
+	uint32_t intreg_pending;
+	uint32_t pil_out;
+} GS232_INTCTLState;
+
+#define INTCTL_SIZE 0x100
+#define INTCTLM_MAXADDR 0x13
+#define INTCTLM_SIZE (INTCTLM_MAXADDR + 1)
+#define INTCTLM_MASK 0x1f
+#define MASTER_IRQ_MASK ~0x0fa2007f
+#define MASTER_DISABLE 0x80000000
+#define CPU_SOFTIRQ_MASK 0xfffe0000
+#define CPU_HARDIRQ_MASK 0x0000fffe
+#define CPU_IRQ_INT15_IN 0x0004000
+#define CPU_IRQ_INT15_MASK 0x80000000
+
+
+#define 	HI_IRQ_INTEN				(0x00)
+#define 	HI_IRQ_INTMASK				(0x08)
+#define 	HI_IRQ_INTFORCE				(0x10)
+#define 	HI_IRQ_RAWSTATUS			(0x18)
+#define 	HI_IRQ_STATUS				(0x20)
+#define 	HI_IRQ_MASKSTATUS			(0x28)
+#define 	HI_IRQ_FINALSTATUS			(0x30)
+#define 	HI_FIQ_INTEN				(0xC0)
+#define 	HI_FIQ_INTMASK				(0xC4)
+#define 	HI_FIQ_INTFORCE				(0xC8)
+#define 	HI_FIQ_RAWSTATUS			(0xCC)
+#define 	HI_FIQ_STATUS				(0xD0)
+#define 	HI_FIQ_FINALSTATUS			(0xD4)
+#define 	HI_IRQ_PLEVEL				(0xD8)
+
+static void iie_check_interrupts(void *opaque);
+
+// per-cpu interrupt controller
+static uint64_t iie_intctl_mem_readl(void *opaque, hwaddr addr, unsigned size)
+{
+	GS232_INTCTLState *s = opaque;
+	uint32_t saddr, ret;
+
+	saddr = addr >> 2;
+	switch (saddr) {
+		case 6: //rawstatus
+			ret =  s->intreg_pending;
+			break;
+		case 7: //rawstatus
+			ret =  s->intreg_pending;
+			break;
+		case 8: //status
+			ret = s->inten[0] & s->intreg_pending;
+			break;
+		case 9: //status
+			ret = s->inten[1] & s->intreg_pending;
+			break;
+		case 10: //maskstatus
+			ret = ~s->intmask[0] & s->intreg_pending;
+			break;
+		case 11: //maskstatus
+			ret = ~s->intmask[1] & s->intreg_pending;
+			break;
+		case 12: //finalstatus
+			ret = s->inten[0] /*& ~s->intmask[0]*/ & s->intreg_pending;
+			break;
+		case 13: //finalstatus
+			ret = s->inten[1] /*& ~s->intmask[1]*/ & s->intreg_pending;
+			break;
+		default:
+			ret = *(int *)s;
+			break;
+	}
+	DPRINTF("read reg 0x" TARGET_FMT_plx " = %x\n", addr, ret);
+
+	return ret;
+}
+
+static void iie_intctl_mem_writel(void *opaque, hwaddr addr, uint64_t val, unsigned size)
+{
+	GS232_INTCTLState *s = opaque;
+	uint32_t saddr;
+
+	saddr = addr >> 2;
+	if(saddr>=6 && saddr<14) return;
+	if(saddr>14) return;
+	switch (saddr) {
+		default:
+			*(uint32_t *)((void *)s+addr) = val;
+			iie_check_interrupts(s);
+			break;
+	}
+}
+
+static const MemoryRegionOps iie_intctl_mem_ops = {
+    .read = iie_intctl_mem_readl,
+    .write = iie_intctl_mem_writel,
+    .endianness = DEVICE_NATIVE_ENDIAN,
+};
+
+
+static void iie_check_interrupts(void *opaque)
+{
+	GS232_INTCTLState *s = opaque;
+	uint32_t pil_pending;
+
+
+	pil_pending = s->inten[0] /*& ~s->intmask[0]*/ & s->intreg_pending;
+
+
+	if (pil_pending ) {
+		if (!s->pil_out)
+			qemu_irq_raise(s->cpu_irq);
+	} else {
+		if (s->pil_out)
+			qemu_irq_lower(s->cpu_irq);
+	}
+	s->pil_out = pil_pending;
+	DPRINTF("pending %x \n", pil_pending);
+}
+
+/*
+ * "irq" here is the bit number in the system interrupt register to
+ * separate serial and keyboard interrupts sharing a level.
+ */
+static void iie_set_irq(void *opaque, int irq, int level)
+{
+	GS232_INTCTLState *s = opaque;
+	uint32_t mask = 1 << irq;
+
+	DPRINTF("Set irq %d level %d\n", irq,
+			level);
+	if (level) {
+	if(!s->intreg_pending)
+		s->intreg_pending |= mask;
+	} else {
+	if(s->intreg_pending)
+		s->intreg_pending &= ~mask;
+	}
+	iie_check_interrupts(s);
+}
+
+
+static void iie_intctl_save(QEMUFile *f, void *opaque)
+{
+	GS232_INTCTLState *s = opaque;
+
+	qemu_put_be32s(f, &s->intreg_pending);
+}
+
+static int iie_intctl_load(QEMUFile *f, void *opaque, int version_id)
+{
+	GS232_INTCTLState *s = opaque;
+
+	if (version_id != 1)
+		return -EINVAL;
+
+	qemu_get_be32s(f, &s->intreg_pending);
+	iie_check_interrupts(s);
+	return 0;
+}
+
+static void iie_intctl_reset(void *opaque)
+{
+	GS232_INTCTLState *s = opaque;
+
+	s->intreg_pending = 0;
+	iie_check_interrupts(s);
+}
+
+
+static void *iie_intctl_init(MemoryRegion *mr, hwaddr addr, qemu_irq parent_irq)
+{
+	qemu_irq *irqs;
+	GS232_INTCTLState *s;
+
+	s = g_malloc0(sizeof(GS232_INTCTLState));
+	if (!s)
+		return NULL;
+
+	{
+                MemoryRegion *iomem = g_new(MemoryRegion, 1);
+                memory_region_init_io(iomem, &iie_intctl_mem_ops, s, "iie_int", INTCTL_SIZE);
+                memory_region_add_subregion(mr, addr, iomem);
+	}
+
+	s->cpu_irq = parent_irq;
+
+	register_savevm(NULL, "iie_intctl", addr, 1, iie_intctl_save, iie_intctl_load, s);
+	qemu_register_reset(iie_intctl_reset, s);
+	irqs = qemu_allocate_irqs(iie_set_irq, s, 32);
+
+	iie_intctl_reset(s);
+	return irqs;
 }
 
 QEMUMachine mips_hr1_machine = {
