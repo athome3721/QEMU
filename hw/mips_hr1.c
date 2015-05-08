@@ -75,7 +75,7 @@ static struct _loaderparams {
 static qemu_irq *intctl0_irqs;
 static int configdata = -1;
 
-#define FMAX 16
+#define FMAX 32
 static char serial_rfifo[FMAX];
 static char serial_xfifo[FMAX];
 static int rhead,rtail,rcnt;
@@ -83,6 +83,7 @@ static int xhead,xtail,xcnt;
 static int xie,rie;
 static void *iie_intctl_init(MemoryRegion *mr, hwaddr addr, qemu_irq parent_irq);
 static QEMUTimer *serial_timer;
+static uint64_t serial_tick;
 
 #define S_STATUS0_TE		0
 #define M_STATUS0_TE		(0x1 << S_STATUS0_TE)
@@ -160,7 +161,8 @@ static void serial_put(void *opaque, int val)
 
 	if(!xcnt)
         {
-          qemu_mod_timer(serial_timer, qemu_get_clock_ns(vm_clock) + get_ticks_per_sec() / 9600*8);
+	 serial_tick = qemu_get_clock_ns(vm_clock) + get_ticks_per_sec() / 115200*8 ;
+          qemu_mod_timer(serial_timer, serial_tick);
         }
 
 	if(xcnt<FMAX)
@@ -190,6 +192,7 @@ static int serial_get(void *opaque)
 static void serial_send_timer_cb(void *opaque)
 {
  int val;
+again:
 	if(xcnt)
         {
 		val = serial_xfifo[xtail++];
@@ -199,7 +202,11 @@ static void serial_send_timer_cb(void *opaque)
         }
 
 	if(xcnt)
-          qemu_mod_timer(serial_timer, qemu_get_clock_ns(vm_clock) + get_ticks_per_sec() / 9600*8);
+        {
+	 serial_tick += get_ticks_per_sec() / 115200*8 ;
+          if(serial_tick < qemu_get_clock_ns(vm_clock)) goto again;
+          qemu_mod_timer(serial_timer, serial_tick);
+        }
 
         serial_checkirq(opaque);
 }
@@ -665,7 +672,8 @@ static void mips_hr1_init (QEMUMachineInitArgs *args)
         {
         qemu_chr_add_handlers(serial_hds[1], serial_can_receive, serial_receive, serial_event, serial_hds[1]);
          serial_timer = qemu_new_timer_ns(vm_clock, (QEMUTimerCB *) serial_send_timer_cb, serial_hds[1]);
-         qemu_mod_timer(serial_timer, qemu_get_clock_ns(vm_clock) + get_ticks_per_sec() / 9600*8);
+	 serial_tick = qemu_get_clock_ns(vm_clock) + get_ticks_per_sec() / 115200*8 ;
+         qemu_mod_timer(serial_timer, serial_tick);
         }
 	}
 	if (serial_hds[0])
