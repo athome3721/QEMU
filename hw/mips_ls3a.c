@@ -467,7 +467,7 @@ extern void (*mypc_callback)(target_ulong pc, uint32_t opcode);
 static void mypc_callback_ls3a(target_ulong pc, uint32_t opcode)
 {
 	CPUMIPSState *env = cpu_single_env;
-#if 1
+#if 0
 	switch(MASK_OP_MAJOR(opcode))
 	{
 	 case OPC_CACHE:
@@ -477,10 +477,18 @@ static void mypc_callback_ls3a(target_ulong pc, uint32_t opcode)
 	}
 #endif
 
+#define ST0_CU0			0x10000000
 #define ST0_CU2			0x40000000
 #define ST0_KX			0x80
-#if 1
+#if 0
  if(!(env->CP0_Status&ST0_KX) && (oldstatus&ST0_KX))
+ {
+	printf("\r\nerror on 0x%llx\r\n", (long long)pc);
+	exit(0);
+ }
+#endif
+#if 0
+ if(!(env->CP0_Status&ST0_CU0) && (oldstatus&ST0_CU0))
  {
 	printf("\r\nerror on 0x%llx\r\n", (long long)pc);
 	exit(0);
@@ -673,7 +681,13 @@ static void mips_ls3a_init (QEMUMachineInitArgs *args)
 	    }
 
         pci_create_simple(pci_bus, 13<<3, "pci-ohci");
-        pci_create_simple(pci_bus, -1, "pci6254");
+
+{
+    PCIDevice *dev = pci_create_multifunction(pci_bus, -1, false, "pci6254");
+    qdev_prop_set_uint16(&dev->qdev, "vendor", 0x1022);
+    qdev_prop_set_uint16(&dev->qdev, "device", 0x0121);
+    qdev_init_nofail(&dev->qdev);
+}
 	pci_simplevga_init(pci_bus,800,600,16,"none");
 
     if (drive_get_max_bus(IF_IDE) >= MAX_IDE_BUS) {
