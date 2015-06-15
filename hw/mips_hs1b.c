@@ -64,9 +64,6 @@ static struct _loaderparams {
 	const char *initrd_filename;
 } loaderparams;
 
-static int clkreg[2];
-static MemoryRegion *ddrcfg_iomem;
-static int reg0420[2]={0,0x100000};
 
 unsigned int aui_boot_code[] =
 {
@@ -120,50 +117,46 @@ static void mips_qemu_writel (void *opaque, hwaddr addr,
 	addr=((hwaddr)(long)opaque) + addr;
 	switch(addr)
 	{
-		case 0x1fe78030:
-		case 0x1fe78034:
-			clkreg[(addr - 0x1fe78030)/4] = val;
-			break;
-
-		case 0x1fd00420:
-			reg0420[0] = val;
-			break;
-		case 0x1fd00424:
-
-			if(val&0x100000 && !(reg0420[1]&0x100000))
-			{
-				memory_region_del_subregion(get_system_memory(), ddrcfg_iomem);
-			}
-
-			if(!(val&0x100000) && (reg0420[1]&0x100000))
-			{
-				memory_region_add_subregion_overlap(get_system_memory(), 0x0ffffe00&TARGET_PAGE_MASK, ddrcfg_iomem, 1);
-			}
-
-			reg0420[1] = val;
-
+		case 0x1f220030:
 			break;
 	}
 }
 
 static uint64_t mips_qemu_readl (void *opaque, hwaddr addr, unsigned size)
 {
+	static int cnt = 0;
 	addr=((hwaddr)(long)opaque) + addr;
 	switch(addr)
 	{
-		case 0x1fe78030:
-		case 0x1fe78034:
-			return clkreg[(addr - 0x1fe78030)/4];
-			break;
-		case 0x0ffffe10:
-			return 1;
-			break;
-		case 0x0ffffef0:
-			return 0x100000;
-			break;
-		case 0x0ffffef2:
-			return 0x10;
-			break;
+		case 0x1f240030:
+		cnt++;
+		return (cnt&1)?3:2;
+		case 0x1f220030:
+		cnt++;
+		return (cnt&1)?3:2;
+		break;
+		case 0x1f23008c:
+		return 0x00f12480;
+		break;
+		case 0x1f230010:
+		cnt++;
+		return (cnt&1)?0x9000000f:0x9000001f;
+		case 0x1f220324:
+		return 0x00000001;
+		case 0x1f220004:
+		cnt++;
+		return (cnt&1)?0:1;
+		case  0x1f25008c:
+		return 0x00f12480;
+		case 0x1f250010:
+		cnt++;
+		return (cnt&1)?0x9000000f:0x9000001f;
+		case 0x1f240324:
+		return 0x00000001;
+		case 0x1f240004:
+		cnt++;
+		return (cnt&1)?0:1;
+
 	}
 	return 0;
 }
@@ -188,12 +181,14 @@ static uint64_t cpu_mips_kseg1_to_phys(void *opaque, uint64_t addr)
      return (addr|0x10000000) & 0x1fffffffll;
 }
 
+uint64_t BOOTPARAM_ADDR;
+
 static int64_t load_kernel(void)
 {
 	int64_t entry, kernel_low, kernel_high;
 	long kernel_size;
-#if 0
-        int  initrd_size, params_size;
+#if 1
+        long  initrd_size, params_size;
 	char *params_buf;
 	ram_addr_t initrd_offset;
 	int ret;
@@ -217,7 +212,7 @@ static int64_t load_kernel(void)
 		exit(1);
 	}
 
-#if 0
+#if 1
 
 	/* load initrd */
 	initrd_size = 0;
@@ -248,8 +243,8 @@ static int64_t load_kernel(void)
 
 
 
-#define BOOTPARAM_PHYADDR ((64 << 20) - 264)
-#define BOOTPARAM_ADDR (0x80000000+BOOTPARAM_PHYADDR)
+#define BOOTPARAM_PHYADDR ((entry&0x10000000) + (64 << 20) - 264)
+         BOOTPARAM_ADDR = (0x80000000+BOOTPARAM_PHYADDR);
 	// should set argc,argv
 	//env->gpr[REG][env->current_tc]
 	{
@@ -319,10 +314,10 @@ static void main_cpu_reset(void *opaque)
 	env->active_tc.PC = 0xbfc00000;
 	env->active_tc.gpr[31]=s->vector;
     }
-#if 0
+#if 1
 	env->active_tc.gpr[4]=2;
-	env->active_tc.gpr[5]=0x80000000+BOOTPARAM_PHYADDR;
-	env->active_tc.gpr[6]=0x80000000+BOOTPARAM_PHYADDR +12;
+	env->active_tc.gpr[5]=BOOTPARAM_ADDR;
+	env->active_tc.gpr[6]=BOOTPARAM_ADDR +12;
 #endif
 }
 
@@ -464,6 +459,12 @@ static void mips_hs1b_init (QEMUMachineInitArgs *args)
 
 	if (serial_hds[0])
 		serial_mm_init(address_space_mem, 0x1f280000, 2,hisense_irq[9],115200,serial_hds[0], DEVICE_NATIVE_ENDIAN);
+
+	{
+                MemoryRegion *iomem = g_new(MemoryRegion, 1);
+                memory_region_init_io(iomem, &mips_qemu_ops, (void *)0x1f220000, "0x1f220000", 0x40000);
+                memory_region_add_subregion(address_space_mem, 0x1f220000, iomem);
+	}
 
 	mypc_callback =  mypc_callback_for_net;
 
