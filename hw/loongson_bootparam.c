@@ -88,7 +88,7 @@ struct efi_memory_map_loongson * init_memory_map(void *g_map)
 #if (defined(LOONGSON_3BSERVER))
   emap->nr_map = 10; 
 #else
-  emap->nr_map = 6; 
+  emap->nr_map = 7; 
 #endif
 
   emap->mem_freq = 266000000; //300M
@@ -114,7 +114,7 @@ struct efi_memory_map_loongson * init_memory_map(void *g_map)
   emap->map[1].node_id = 0;
   //strcpy(emap->map[1].mem_name, "node0_high");
   emap->map[1].mem_type = 2;
-#if defined(LOONGSON_3A2H) || defined(LOONGSON_2H) || defined(LOONGSON_3C2H)
+#if defined(LOONGSON_3A2H) || defined(LOONGSON_2H)
   emap->map[1].mem_start = 0x110000000;
 #else
   emap->map[1].mem_start = 0x90000000;
@@ -126,7 +126,7 @@ struct efi_memory_map_loongson * init_memory_map(void *g_map)
   emap->map[2].mem_type = 10;
   emap->map[2].mem_start = SMBIOS_PHYSICAL_ADDRESS;
 
-#ifdef LOONGSON_2H 
+#ifdef LOONGSON_2H
   emap->map[3].node_id = 0;
   emap->map[3].mem_type = 3;
   emap->map[3].mem_start = 0x120000000;
@@ -136,6 +136,18 @@ struct efi_memory_map_loongson * init_memory_map(void *g_map)
   emap->map[3].mem_type = 3;
   emap->map[3].mem_start = SMBIOS_PHYSICAL_ADDRESS & 0x0fffffff;
   emap->map[3].mem_size = SMBIOS_SIZE_LIMIT >> 20;
+#endif
+
+
+#ifdef LOONGSON_2H
+#ifdef UMA_VIDEO_RAM
+  emap->map[0].mem_size = atoi(getenv("memsize")) - 32 - VRAM_SIZE;
+
+  emap->map[6].node_id = 0;
+  emap->map[6].mem_type = 11;
+  emap->map[6].mem_start = ((emap->map[0].mem_size) + 16) << 20;
+  emap->map[6].mem_size = VRAM_SIZE;
+#endif
 #endif
 
 #if (defined(MULTI_CHIP)) || (defined(LOONGSON_3BSINGLE))
@@ -371,11 +383,7 @@ static struct board_devices *board_devices_info(void *g_board)
   strcpy(bd->name,"Loongson-3A-2H-1w-V1.00-demo");
 #endif
 #ifdef LOONGSON_3BSINGLE
-#ifdef LOONGSON_3B1500
-        strcpy(bd->name, "Loongson-3B-780E-1w-V0.9-demo");
-#else
-        strcpy(bd->name, "Loongson-3B-780E-1w-V1.03-demo");
-#endif
+  strcpy(bd->name,"Loongson-3B-780E-1w-V1.03-demo");
 #endif
 #ifdef LOONGSON_3BSERVER
   strcpy(bd->name,"Loongson-3B-780E-2w-V1.03-demo");
@@ -408,7 +416,7 @@ struct loongson_special_attribute *init_special_info(void *g_special)
   int VRAM_SIZE=0x20000;
   
   strcpy(special->special_name,update);
-  
+#ifdef LOONGSON_2H 
 #ifdef CONFIG_GFXUMA   
   special->resource[0].flags = 1;
   special->resource[0].start = 0;
@@ -420,9 +428,6 @@ struct loongson_special_attribute *init_special_info(void *g_special)
   special->resource[0].end = VRAM_SIZE;
   strcpy(special->resource[0].name,"SPMODULE");
 #endif
-
-#ifndef LOONGSON_2H
-  special->resource[0].flags |= DMA64_SUPPORT;
 #endif
   return special;
 }
