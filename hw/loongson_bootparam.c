@@ -413,7 +413,9 @@ struct loongson_special_attribute *init_special_info(void *g_special)
   
   struct loongson_special_attribute  *special = g_special;
   char update[11]="2013-01-01";
+#ifdef LOONGSON_2H 
   int VRAM_SIZE=0x20000;
+#endif
   
   strcpy(special->special_name,update);
 #ifdef LOONGSON_2H 
