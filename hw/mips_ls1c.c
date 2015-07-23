@@ -64,7 +64,13 @@ static struct _loaderparams {
 	const char *initrd_filename;
 } loaderparams;
 
-static int clkreg[2];
+#define	SDRAM_DIV_2		0x0
+#define	SDRAM_DIV_3		0x2
+#define	SDRAM_DIV_4		0x1
+#define	PLL_M			0x40
+#define  FRAC_N         0xff	
+#define	SDRAM_DIV		SDRAM_DIV_4
+static int clkreg[2] = {0x800050ac ,0x8d0082b3 };
 static MemoryRegion *ddrcfg_iomem;
 static int reg0420[2]={0,0x100000};
 
@@ -189,7 +195,7 @@ static int64_t load_kernel(void)
 
 
 
-#define BOOTPARAM_PHYADDR ((64 << 20) - 264)
+#define BOOTPARAM_PHYADDR ((32 << 20) - 264)
 #define BOOTPARAM_ADDR (0x80000000+BOOTPARAM_PHYADDR)
 	// should set argc,argv
 	//env->gpr[REG][env->current_tc]
@@ -270,11 +276,8 @@ static void mips_ls1c_init (QEMUMachineInitArgs *args)
 	const char *kernel_filename = args->kernel_filename;
 	const char *kernel_cmdline = args->kernel_cmdline;
 	const char *initrd_filename = args->initrd_filename;
-	char *filename;
 	MemoryRegion *address_space_mem = get_system_memory();
 	MemoryRegion *ram = g_new(MemoryRegion, 1);
-	MemoryRegion *bios;
-	int bios_size;
 	MIPSCPU *cpu;
 	CPUMIPSState *env;
 	ResetData *reset_info;
@@ -317,38 +320,6 @@ static void mips_ls1c_init (QEMUMachineInitArgs *args)
 	//memory_region_init_io(iomem, &mips_qemu_ops, NULL, "mips-qemu", 0x10000);
 	//memory_region_add_subregion(address_space_mem, 0x1fbf0000, iomem);
 
-    /* Try to load a BIOS image. If this fails, we continue regardless,
-       but initialize the hardware ourselves. When a kernel gets
-       preloaded we also initialize the hardware, since the BIOS wasn't
-       run. */
-    if (bios_name == NULL)
-        bios_name = BIOS_FILENAME;
-    filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, bios_name);
-    if (filename) {
-        bios_size = get_image_size(filename);
-    } else {
-        bios_size = -1;
-    }
-
-    if ((bios_size > 0) && (bios_size <= BIOS_SIZE)) {
-        bios = g_new(MemoryRegion, 1);
-        memory_region_init_ram(bios, "mips_r4k.bios", BIOS_SIZE);
-        vmstate_register_ram_global(bios);
-        memory_region_set_readonly(bios, true);
-        memory_region_add_subregion(get_system_memory(), 0x1fc00000, bios);
-
-        load_image_targphys(filename, 0x1fc00000, BIOS_SIZE);
-	ddr2config = 1;
-    } else if ((flash_dinfo = drive_get_next(IF_PFLASH)))
-	ddr2config = 1;
-    else {
-	/* not fatal */
-        fprintf(stderr, "qemu: Warning, could not load MIPS bios '%s'\n",
-		bios_name);
-    }
-    if (filename) {
-        g_free(filename);
-    }
 
     if (kernel_filename) {
 	uint64_t vector;
@@ -375,7 +346,7 @@ static void mips_ls1c_init (QEMUMachineInitArgs *args)
 	ls1c_intctl_init(0x1Fd01088,env->irq[5]);
 
 
-	if (serial_hds[0])
+	if (serial_hds[11])
 		serial_mm_init(address_space_mem, 0x1fe40000, 0,ls1c_irq[2],115200,serial_hds[0], DEVICE_NATIVE_ENDIAN);
 
 	if (serial_hds[1])
@@ -408,8 +379,8 @@ static void mips_ls1c_init (QEMUMachineInitArgs *args)
 	if (serial_hds[10])
 		serial_mm_init(address_space_mem, 0x1fe4ca00, 0,ls1c_irq1[14],115200,serial_hds[10], DEVICE_NATIVE_ENDIAN);
 
-	if (serial_hds[11])
-		serial_mm_init(address_space_mem, 0x1fe4cb00, 0,ls1c_irq1[15],115200,serial_hds[11], DEVICE_NATIVE_ENDIAN);
+	if (serial_hds[0])
+		serial_mm_init(address_space_mem, 0x1fe4cb00, 0,ls1c_irq1[15],115200,serial_hds[0], DEVICE_NATIVE_ENDIAN);
 
 	sysbus_create_simple("ls1a_fb", 0x1c301240, NULL);
 
@@ -420,14 +391,14 @@ static void mips_ls1c_init (QEMUMachineInitArgs *args)
 	}
 
 
-	sysbus_create_simple("exynos4210-ehci-usb",0x1fe00000, ls1c_irq1[0]);
+	sysbus_create_simple("exynos4210-ehci-usb",0x1fe20000, ls1c_irq1[0]);
 	{
 		DeviceState *dev;
 		dev = qdev_create(NULL, "sysbus-ohci");
 		qdev_prop_set_uint32(dev, "num-ports", 4);
 		qdev_prop_set_taddr(dev, "dma-offset", 0);
 		qdev_init_nofail(dev);
-		sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, 0x1fe08000);
+		sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, 0x1fe28000);
 		sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0, ls1c_irq1[1]);
 
 		//dev = sysbus_create_simple("sysbus-ohci", 0x1fe08000, ls1c_irq1[1]);
@@ -481,7 +452,7 @@ static void mips_ls1c_init (QEMUMachineInitArgs *args)
 	{
 		DeviceState *dev;
 		SysBusDevice *s;
-		dev = qdev_create(NULL, "ls1b_dma");
+		dev = qdev_create(NULL, "ls1a_dma");
 		printf("ac97 dev=%p\n",dev);
 		qdev_init_nofail(dev);
 		s = SYS_BUS_DEVICE(dev);
@@ -493,6 +464,8 @@ static void mips_ls1c_init (QEMUMachineInitArgs *args)
 		DeviceState *dev;
 		SysBusDevice *s;
 		dev = qdev_create(NULL, "ls1a_nand");
+		qdev_prop_set_uint32(dev, "size", 0x1000);
+		qdev_prop_set_uint64(dev, "addr", 0x1fc00000);
 		qdev_init_nofail(dev);
 		s = SYS_BUS_DEVICE(dev);
 		sysbus_mmio_map(s, 0, 0x1fe78000);
