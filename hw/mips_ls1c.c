@@ -282,7 +282,6 @@ static void mips_ls1c_init (QEMUMachineInitArgs *args)
 	CPUMIPSState *env;
 	ResetData *reset_info;
 	qemu_irq *ls1c_irq,*ls1c_irq1;
-	DriveInfo *flash_dinfo=NULL;
 	int ddr2config = 0;
 
 
@@ -346,41 +345,55 @@ static void mips_ls1c_init (QEMUMachineInitArgs *args)
 	ls1c_intctl_init(0x1Fd01088,env->irq[5]);
 
 
-	if (serial_hds[11])
-		serial_mm_init(address_space_mem, 0x1fe40000, 0,ls1c_irq[2],115200,serial_hds[0], DEVICE_NATIVE_ENDIAN);
+	{
+	int i;
+	int debugserial = 11;
+	int index[12];
+	if(getenv("SERIAL")) debugserial = strtoul(getenv("SERIAL"),0,0);
+	
+	for(i=0;i<12;i++)
+	index[i] = i;
 
-	if (serial_hds[1])
-		serial_mm_init(address_space_mem, 0x1fe44000, 0,ls1c_irq[4],115200,serial_hds[1], DEVICE_NATIVE_ENDIAN);
+	index[debugserial] = 0;
+	index[0] =  debugserial;
 
-	if (serial_hds[2])
-		serial_mm_init(address_space_mem, 0x1fe48000, 0,ls1c_irq[5],115200,serial_hds[2], DEVICE_NATIVE_ENDIAN);
 
-	if (serial_hds[3])
-		serial_mm_init(address_space_mem, 0x1fe4c000, 0,ls1c_irq[29],115200,serial_hds[3], DEVICE_NATIVE_ENDIAN);
+	if (serial_hds[index[0]])
+		serial_mm_init(address_space_mem, 0x1fe40000, 0,ls1c_irq[2],115200,serial_hds[index[0]], DEVICE_NATIVE_ENDIAN);
 
-	if (serial_hds[4])
-		serial_mm_init(address_space_mem, 0x1fe4c400, 0,ls1c_irq1[5],115200,serial_hds[4], DEVICE_NATIVE_ENDIAN);
+	if (serial_hds[index[1]])
+		serial_mm_init(address_space_mem, 0x1fe44000, 0,ls1c_irq[4],115200,serial_hds[index[1]], DEVICE_NATIVE_ENDIAN);
 
-	if (serial_hds[5])
-		serial_mm_init(address_space_mem, 0x1fe4c500, 0,ls1c_irq1[6],115200,serial_hds[5], DEVICE_NATIVE_ENDIAN);
+	if (serial_hds[index[2]])
+		serial_mm_init(address_space_mem, 0x1fe48000, 0,ls1c_irq[5],115200,serial_hds[index[2]], DEVICE_NATIVE_ENDIAN);
 
-	if (serial_hds[6])
-		serial_mm_init(address_space_mem, 0x1fe4c600, 0,ls1c_irq1[7],115200,serial_hds[6], DEVICE_NATIVE_ENDIAN);
+	if (serial_hds[index[3]])
+		serial_mm_init(address_space_mem, 0x1fe4c000, 0,ls1c_irq[29],115200,serial_hds[index[3]], DEVICE_NATIVE_ENDIAN);
 
-	if (serial_hds[7])
-		serial_mm_init(address_space_mem, 0x1fe4c700, 0,ls1c_irq1[8],115200,serial_hds[7], DEVICE_NATIVE_ENDIAN);
+	if (serial_hds[index[4]])
+		serial_mm_init(address_space_mem, 0x1fe4c400, 0,ls1c_irq1[5],115200,serial_hds[index[4]], DEVICE_NATIVE_ENDIAN);
 
-	if (serial_hds[8])
-		serial_mm_init(address_space_mem, 0x1fe4c800, 0,ls1c_irq1[9],115200,serial_hds[8], DEVICE_NATIVE_ENDIAN);
+	if (serial_hds[index[5]])
+		serial_mm_init(address_space_mem, 0x1fe4c500, 0,ls1c_irq1[6],115200,serial_hds[index[5]], DEVICE_NATIVE_ENDIAN);
 
-	if (serial_hds[9])
-		serial_mm_init(address_space_mem, 0x1fe4c900, 0,ls1c_irq1[13],115200,serial_hds[9], DEVICE_NATIVE_ENDIAN);
+	if (serial_hds[index[6]])
+		serial_mm_init(address_space_mem, 0x1fe4c600, 0,ls1c_irq1[7],115200,serial_hds[index[6]], DEVICE_NATIVE_ENDIAN);
 
-	if (serial_hds[10])
-		serial_mm_init(address_space_mem, 0x1fe4ca00, 0,ls1c_irq1[14],115200,serial_hds[10], DEVICE_NATIVE_ENDIAN);
+	if (serial_hds[index[7]])
+		serial_mm_init(address_space_mem, 0x1fe4c700, 0,ls1c_irq1[8],115200,serial_hds[index[7]], DEVICE_NATIVE_ENDIAN);
 
-	if (serial_hds[0])
-		serial_mm_init(address_space_mem, 0x1fe4cb00, 0,ls1c_irq1[15],115200,serial_hds[0], DEVICE_NATIVE_ENDIAN);
+	if (serial_hds[index[8]])
+		serial_mm_init(address_space_mem, 0x1fe4c800, 0,ls1c_irq1[9],115200,serial_hds[index[8]], DEVICE_NATIVE_ENDIAN);
+
+	if (serial_hds[index[9]])
+		serial_mm_init(address_space_mem, 0x1fe4c900, 0,ls1c_irq1[13],115200,serial_hds[index[9]], DEVICE_NATIVE_ENDIAN);
+
+	if (serial_hds[index[10]])
+		serial_mm_init(address_space_mem, 0x1fe4ca00, 0,ls1c_irq1[14],115200,serial_hds[index[10]], DEVICE_NATIVE_ENDIAN);
+
+	if (serial_hds[index[11]])
+		serial_mm_init(address_space_mem, 0x1fe4cb00, 0,ls1c_irq1[15],115200,serial_hds[index[11]], DEVICE_NATIVE_ENDIAN);
+	}
 
 	sysbus_create_simple("ls1a_fb", 0x1c301240, NULL);
 
@@ -419,16 +432,19 @@ static void mips_ls1c_init (QEMUMachineInitArgs *args)
 		DeviceState *dev,*dev1;
 		void *bus;
 		qemu_irq cs_line;
+		DriveInfo *flash_dinfo=NULL;
 		dev=sysbus_create_simple("ls1a_spi",0x1fe80000, ls1c_irq[8]);
 		bus = qdev_get_child_bus(dev, "ssi");
+		flash_dinfo = drive_get_next(IF_PFLASH);
+
 		if(flash_dinfo)
 		{
 			dev1 = ssi_create_slave_no_init(bus, "spi-flash");
 			if (qdev_prop_set_drive(dev1, "drive", flash_dinfo->bdrv)) {
 				abort();
 			}
-			qdev_prop_set_uint32(dev1, "size", 0x100000);
-			qdev_prop_set_uint64(dev1, "addr", 0x1fc00000);
+			qdev_prop_set_uint32(dev1, "size", 0x800000);
+			qdev_prop_set_uint64(dev1, "addr", 0x1d000000);
 			qdev_init_nofail(dev1);
 		}
 		else dev1 = ssi_create_slave(bus, "ssi-sd");
