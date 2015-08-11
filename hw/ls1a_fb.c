@@ -38,7 +38,6 @@ typedef struct {
     int depth;
     int bypp;
     int enable;
-    int config;
     int need_update;
     void *type;
 
@@ -53,6 +52,10 @@ typedef struct {
 
     int index;
     int syncing;
+    int config[2];
+    int hdisplay[2];
+    int vdisplay[2];
+    int bufaddr[2];
 } ls1a_fb_state;
 
 
@@ -163,7 +166,6 @@ static void ls1a_fb_reset(ls1a_fb_state *s)
 	s->index = 0;
 	s->need_update = 1;
 	s->enable = 0;
-	s->config = 0;
 	s->width = width;
 	s->height = height;
 	s->depth = depth;
@@ -196,11 +198,14 @@ OF_DBLBUF=0x340,
 static void ls1a_fb_writel (void *opaque, hwaddr addr, uint64_t val, unsigned size)
 {
  ls1a_fb_state *s = opaque;
+ int i = 1;
 
 addr=0x1c301240 + addr;
+
  switch(addr)
  {
   case 0x1c301240+OF_BUF_CONFIG:
+	  i = 0;
   case 0x1c301250+OF_BUF_CONFIG:
 	if(val&0x100)
 	{
@@ -222,33 +227,71 @@ addr=0x1c301240 + addr;
 	  s->need_update = 1;
 	ls1a_fb_size(s);
       }
+	s->config[i] = val;
   break;
   case 0x1c301240+OF_HDISPLAY:
+	  i = 0;
   case 0x1c301250+OF_HDISPLAY:
 	s->width = val&0xffff;
 	s->need_update = 1;
 	ls1a_fb_size(s);
+	s->hdisplay[i] = val;
 	break;
   case 0x1c301240+OF_VDISPLAY:
+	  i = 0;
   case 0x1c301250+OF_VDISPLAY:
 	s->height = val&0xffff;
 	s->need_update = 1;
 	ls1a_fb_size(s);
+	s->vdisplay[i] = val;
 	break;
 
   case 0x1c301240+OF_BUF_ADDR:
+	  i = 0;
   case 0x1c301250+OF_BUF_ADDR:
   s->vram_offset = val;
   s->need_update = 1;
 	ls1a_fb_size(s);
+	s->bufaddr[i] = val;
   break;
  }
 }
 
 static uint64_t ls1a_fb_readl (void *opaque, hwaddr addr, unsigned size)
 {
-// ls1a_fb_state *s = opaque;
-    return 0;
+ ls1a_fb_state *s = opaque;
+ int i = 1;
+ uint64_t val;
+
+ addr=0x1c301240 + addr;
+
+ switch(addr)
+ {
+  case 0x1c301240+OF_BUF_CONFIG:
+	  i = 0;
+  case 0x1c301250+OF_BUF_CONFIG:
+       val=s->config[i];
+	break;
+  case 0x1c301240+OF_HDISPLAY:
+	  i = 0;
+  case 0x1c301250+OF_HDISPLAY:
+	val = s->hdisplay[i];
+	break;
+  case 0x1c301240+OF_VDISPLAY:
+	  i = 0;
+  case 0x1c301250+OF_VDISPLAY:
+	val = s->vdisplay[i];
+        break;
+  case 0x1c301240+OF_BUF_ADDR:
+	  i = 0;
+  case 0x1c301250+OF_BUF_ADDR:
+	val = s->bufaddr[i];
+        break;
+  default:
+        val = 0;
+	break;
+ }
+    return val;
 }
 
 static const MemoryRegionOps ls1a_fb_ops = {
