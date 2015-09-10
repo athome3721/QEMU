@@ -141,6 +141,7 @@ struct loongson_params{
 
 struct smbios_tables {
 	u16 vers; /*version of smbios*/
+        char unused[6];
 	unsigned long long vga_bios;/*vga_bios address*/
 	struct loongson_params lp;
 };
