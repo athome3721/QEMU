@@ -323,7 +323,7 @@ static void intel_hda_corb_run(IntelHDAState *d)
 	printf("data=0x%x\n", data);
 	}
 	dma_memory_read(d->dmactx, addr + 4*rp, &verb, 4);
-	printf("d->corb_lbase=0x%x d->corb_ubase=0x%x addr=0x%lx rp=0x%x verb=0x%x\n", d->corb_lbase, d->corb_ubase, addr, rp, verb);
+	printf("d->corb_lbase=0x%x d->corb_ubase=0x%x addr=0x%lx rp=0x%x verb=0x%x\n", d->corb_lbase, d->corb_ubase, (long)addr, rp, verb);
         d->corb_rp = rp;
 
         dprint(d, 2, "%s: [rp 0x%x] verb 0x%08x\n", __FUNCTION__, rp, verb);
