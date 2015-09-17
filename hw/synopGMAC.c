@@ -1681,7 +1681,7 @@ int pos;
 	}
 	else {
 	/*128bit bus*/
-	s->dma.DmaTxCurrDesc += 16 + ((s->dma.DmaBusMode&0x7c)>>2)*s->buswidth/8;
+	s->dma.DmaTxCurrDesc += 16 + ((s->dma.DmaBusMode&0x7c)>>2)*s->buswidth/16;
 	}
 
 	}
@@ -1878,7 +1878,7 @@ static ssize_t gmac_do_receive(NetClientState *nc, const uint8_t *buf, size_t si
 	}
 	else {
 	/*128bit bus*/
-	s->dma.DmaRxCurrDesc += 16 + ((s->dma.DmaBusMode&0x7c)>>2)*s->buswidth/8;
+	s->dma.DmaRxCurrDesc += 16 + ((s->dma.DmaBusMode&0x7c)>>2)*s->buswidth/16;
 	}
 
 	}
