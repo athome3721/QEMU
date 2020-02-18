@@ -35,6 +35,12 @@ bool qemu_cpu_has_work(CPUState *cpu)
 void cpu_loop_exit(CPUArchState *env)
 {
     env->current_tb = NULL;
+    //printf("\n  %s:%d 0x%x\n\n", __func__, __LINE__, env->active_tc.PC);
+    //printf("\n  %s:%d " TARGET_FMT_lx "\n\n", __func__, __LINE__, env->active_tc.PC);
+    //if (env->active_tc.PC == 0xffffffff80c65544LL) {
+    //  int * f = NULL;
+    //  * f = NULL;
+    //}
     longjmp(env->jmp_env, 1);
 }
 
@@ -146,6 +152,7 @@ static inline TranslationBlock *tb_find_fast(CPUArchState *env)
        always be the same before a given translated block
        is executed. */
     cpu_get_tb_cpu_state(env, &pc, &cs_base, &flags);
+	//printf(" %s:0x%x\n", __func__, pc);
     tb = env->tb_jmp_cache[tb_jmp_cache_hash_func(pc)];
     if (unlikely(!tb || tb->pc != pc || tb->cs_base != cs_base ||
                  tb->flags != flags)) {
@@ -181,8 +188,10 @@ volatile sig_atomic_t exit_request;
 
 int cpu_exec(CPUArchState *env)
 {
+//	printf("---enter:%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
+
     CPUState *cpu = ENV_GET_CPU(env);
-    int ret, interrupt_request;
+    int ret, interrupt_request, i_cont=0;
     TranslationBlock *tb;
     uint8_t *tc_ptr;
     tcg_target_ulong next_tb;
@@ -565,6 +574,8 @@ int cpu_exec(CPUArchState *env)
 #endif /* DEBUG_DISAS || CONFIG_DEBUG_EXEC */
                 spin_lock(&tb_lock);
                 tb = tb_find_fast(env);
+			//	if(i_cont%1000 == 0)printf(" ---call tb_find_fast i_cont=%d   tb =  0x%x\n", i_cont, tb);
+				
                 /* Note: we do it here to avoid a gcc bug on Mac OS X when
                    doing it in tb_find_slow */
                 if (tb_invalidated_flag) {
@@ -596,7 +607,10 @@ int cpu_exec(CPUArchState *env)
                 if (likely(!env->exit_request)) {
                     tc_ptr = tb->tc_ptr;
                     /* execute the generated code */
-                    next_tb = tcg_qemu_tb_exec(env, tc_ptr);
+                   // if(i_cont%1000 == 0) printf(" call tcg_qemu_tb_exec   tb=0x%x  0x%x\n", tb, tc_ptr);
+					//i_cont++;
+					next_tb = tcg_qemu_tb_exec(env, tc_ptr);
+                   // printf("      tcg_qemu_tb_exec end 0x%x\n", tc_ptr);
                     if ((next_tb & 3) == 2) {
                         /* Instruction counter expired.  */
                         int insns_left;
@@ -635,6 +649,7 @@ int cpu_exec(CPUArchState *env)
             env = cpu_single_env;
         }
     } /* for(;;) */
+    //printf("%s:%d for(;;) over\n\n", __func__, __LINE__);
 
 
 #if defined(TARGET_I386)
@@ -667,5 +682,7 @@ int cpu_exec(CPUArchState *env)
 
     /* fail safe : never use cpu_single_env outside cpu_exec() */
     cpu_single_env = NULL;
+//	printf("--exit%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
+
     return ret;
 }

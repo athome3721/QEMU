@@ -32,6 +32,7 @@ static int init_boot_param(struct boot_params *bp)
 
 void init_efi(struct efi *efi)
 {
+	printf("%s 0x%x\n", __func__, efi);
     init_smbios(&(efi->smbios));
 }
 
@@ -44,6 +45,7 @@ void init_reset_system(struct efi_reset_system_t *reset)
 void init_smbios(struct smbios_tables *smbios)
 {
   
+	printf("%s 0x%x\n", __func__, smbios);
   smbios->vers = 0;
 #ifdef RS780E
   if(vga_dev != NULL){
@@ -59,23 +61,35 @@ void init_smbios(struct smbios_tables *smbios)
 
 void init_loongson_params(struct loongson_params *lp)
 {
+//	printf("%s 0x%x\n", __func__, lp);
+	printf("---enter:%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
  void *p = boot_params_p;
+ printf("p = 0x%x\n", p);
 
   lp->memory_offset = (unsigned long long)init_memory_map(p) - (unsigned long long)lp;
   p += align(sizeof(struct efi_memory_map_loongson));
+ printf("p = 0x%x\n", p);
   lp->cpu_offset = (unsigned long long)init_cpu_info(p) - (unsigned long long)lp; 
   p += align(sizeof(struct efi_cpuinfo_loongson));
+ printf("p = 0x%x\n", p);
   lp->system_offset = (unsigned long long)init_system_loongson(p) - (unsigned long long)lp;
   p += align(sizeof(struct system_loongson));
+ printf("p = 0x%x\n", p);
   lp->irq_offset = (unsigned long long)init_irq_source(p) - (unsigned long long)lp; 
   p += align(sizeof(struct irq_source_routing_table));
+ printf("p = 0x%x\n", p);
+ printf("-> 0x%x %d\n", p, (sizeof(struct irq_source_routing_table)));
   lp->interface_offset = (unsigned long long)init_interface_info(p) - (unsigned long long)lp;
   p += align(sizeof(struct interface_info));
+ printf("p = 0x%x\n", p);
   lp->boarddev_table_offset = (unsigned long long)board_devices_info(p) - (unsigned long long)lp;
   p+= align(sizeof(struct board_devices));
+ printf("p = 0x%x\n", p);
   lp->special_offset = (unsigned long long)init_special_info(p) - (unsigned long long)lp; 
   p+= align(sizeof(struct loongson_special_attribute));
+ printf("p = 0x%x\n", p);
   boot_params_p = p;
+  printf("---exit:%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
 }
 
 

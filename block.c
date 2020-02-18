@@ -3442,7 +3442,7 @@ static int multiwrite_merge(BlockDriverState *bs, BlockRequest *reqs,
             merge = 1;
         }
 
-        if (reqs[outidx].qiov->niov + reqs[i].qiov->niov + 1 > IOV_MAX) {
+        if (reqs[outidx].qiov->niov + reqs[i].qiov->niov + 1 > 1024) {
             merge = 0;
         }
 

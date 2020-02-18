@@ -119,6 +119,8 @@ void qemu_notify_event(void)
 
 int qemu_init_main_loop(void)
 {
+//	printf("---enter:%s %s %s", __FILE__, __FUNCTION__, __LINE__);
+
     int ret;
     GSource *src;
 
@@ -138,6 +140,7 @@ int qemu_init_main_loop(void)
     g_source_attach(src, NULL);
     g_source_unref(src);
     return 0;
+//	printf("---exit:%s %s %s", __FILE__, __FUNCTION__, __LINE__);
 }
 
 static fd_set rfds, wfds, xfds;

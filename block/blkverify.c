@@ -194,7 +194,7 @@ static void blkverify_iovec_clone(QEMUIOVector *dest, const QEMUIOVector *src,
                                   void *buf)
 {
     IOVectorSortElem sortelems[src->niov];
-    void *last_end;
+    caddr_t last_end;
     int i;
 
     /* Sort by source iovecs by base address */
@@ -212,7 +212,7 @@ static void blkverify_iovec_clone(QEMUIOVector *dest, const QEMUIOVector *src,
 
         /* Detect overlap */
         if (last_end && last_end > cur->iov_base) {
-            rewind = last_end - cur->iov_base;
+            rewind = last_end - (cur->iov_base);
         }
 
         sortelems[i].dest_base = buf - rewind;

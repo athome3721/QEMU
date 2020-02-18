@@ -743,6 +743,7 @@ static inline bool cpu_has_work(CPUState *cpu)
 static inline void cpu_pc_from_tb(CPUMIPSState *env, TranslationBlock *tb)
 {
     env->active_tc.PC = tb->pc;
+    printf("TB PC: 0x%x\n", env->active_tc.PC);
     env->hflags &= ~MIPS_HFLAG_BMASK;
     env->hflags |= tb->flags & MIPS_HFLAG_BMASK;
 }

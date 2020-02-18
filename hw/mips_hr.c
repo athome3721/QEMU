@@ -299,7 +299,8 @@ static int64_t load_kernel(void)
                         loaderparams.initrd_filename);
                 exit(1);
             }
-	    if(getenv("INITRD_OFFSET")) initrd_offset=strtoul(getenv("INITRD_OFFSET"),0,0);
+	    //if(getenv("INITRD_OFFSET")) initrd_offset=strtoul(getenv("INITRD_OFFSET"),0,0);
+			initrd_offset=0x05000000;
             initrd_size = load_image_targphys(loaderparams.initrd_filename,
                                      initrd_offset,ram_size-initrd_offset); //qemu_get_ram_ptr
         }

@@ -52,11 +52,14 @@ static void mips_cpu_initfn(Object *obj)
 
 static void mips_cpu_class_init(ObjectClass *c, void *data)
 {
+	printf("---enter:%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
+
     MIPSCPUClass *mcc = MIPS_CPU_CLASS(c);
     CPUClass *cc = CPU_CLASS(c);
 
     mcc->parent_reset = cc->reset;
     cc->reset = mips_cpu_reset;
+	printf("---exit:%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
 }
 
 static const TypeInfo mips_cpu_type_info = {

@@ -651,6 +651,10 @@ static void opt_set(QemuOpts *opts, const char *name, const char *value,
         error_propagate(errp, local_err);
         qemu_opt_del(opt);
     }
+	if(strcmp(opt->name, "initrd") == 0)
+	{
+		printf("opt set QemuOpt:name=%s, str=%s, optsid=%d, optlist->name=%s\n", opt->name, opt->str, opt->opts->id, opt->opts->list->name);
+	}
 }
 
 int qemu_opt_set(QemuOpts *opts, const char *name, const char *value)

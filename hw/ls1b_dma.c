@@ -43,6 +43,7 @@ static uint64_t dma_dma_readl(void *ptr, hwaddr addr, unsigned size)
 	return val;
 }
 
+#if 0
 void __attribute__((weak)) ls1b_nand_set_dmaaddr(uint32_t val)
 {
 }
@@ -55,6 +56,7 @@ void __attribute__((weak)) ls1a_ac97_play_set_dmaaddr(uint32_t val)
 void __attribute__((weak)) ls1a_ac97_rec_set_dmaaddr(uint32_t val)
 {
 }
+#endif
 
 static void dma_dma_writel(void *ptr, hwaddr addr, uint64_t val, unsigned size)
 {

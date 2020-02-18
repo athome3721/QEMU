@@ -33,6 +33,83 @@ typedef struct pci6254_sysbus_state {
 } pci6254_sysbus_state;
 
 
+#include <stdio.h>
+#include <windows.h>
+#include <Winbase.h>
+
+void* mmap2(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
+{
+	HANDLE handle, file;
+	DWORD nRead = 0;
+	void *retVal = NULL;
+	DWORD dw;
+	LPVOID lpMsgBuf;
+
+#if 0
+	if ((flags & MAP_SHARED) ||
+	    ((prot & PROT_WRITE) && fd != -1) ||
+	    !(fd == -1 || (file = (HANDLE)_get_osfhandle(fd)) != INVALID_HANDLE_VALUE) ||
+	    length == 0) {
+		return MAP_FAILED;
+	}
+#endif
+
+	if ((handle = CreateFileMapping(INVALID_HANDLE_VALUE, NULL,
+					PAGE_READWRITE,
+					0, (DWORD)length,
+					NULL)) == NULL) return MAP_FAILED;
+
+	//if ((retVal = MapViewOfFile(handle, FILE_MAP_ALL_ACCESS, 0, 0, 0)) == NULL) goto exit;
+	/* shenoubang 2012-5-29 */
+	/* FIXME: when length is too large, failed as not enough space*/
+	if ((retVal = (LPTSTR)MapViewOfFileEx(handle, FILE_MAP_ALL_ACCESS,
+			                0, 0, length, addr)) == NULL) {
+		dw = GetLastError();
+		FormatMessage(
+		     FORMAT_MESSAGE_ALLOCATE_BUFFER |
+		     FORMAT_MESSAGE_FROM_SYSTEM |
+		     FORMAT_MESSAGE_IGNORE_INSERTS,
+		     NULL,
+		     GetLastError(),
+		     MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), // Default language
+		     (LPTSTR) &lpMsgBuf,
+		     0,
+		     NULL
+		     );
+		    printf("mmap failed: %s\n", (char*)lpMsgBuf);
+		     // Free the buffer.
+		     LocalFree( lpMsgBuf );
+
+		return MAP_FAILED;
+	}
+
+#if 0
+	if (fd != -1) {
+		if (SetFilePointer(file, (DWORD)offset,
+				   NULL, FILE_BEGIN) == INVALID_SET_FILE_POINTER) goto err;
+		if (ReadFile(file, retVal, (DWORD)length, &nRead, NULL) == 0) goto err;
+	}
+#endif
+
+	goto exit;
+
+err:
+	UnmapViewOfFile(retVal);
+	retVal = NULL;
+
+exit:
+	CloseHandle(handle);
+	return (retVal == NULL ? MAP_FAILED : retVal);
+}
+
+
+int munmap2(void *addr, size_t length)
+{
+	if (addr == NULL || addr == MAP_FAILED) return -1;
+
+	return (UnmapViewOfFile(addr) == 0 ? -1 : 0);
+}
+
 static void pci6254_reg_init(PCI6254State *s)
 {
 }
@@ -40,12 +117,15 @@ static void pci6254_reg_init(PCI6254State *s)
 static PCI6254State *pci6254_new(PCI6254State *s)
 {
 	int fd;
-	fd=open("/tmp/shm",O_CREAT|O_RDWR, 0666);
+	fd=open("shm.txt",O_CREAT|O_RDWR, 0666);
 	if(ftruncate(fd, 0x10010000))
          printf("truncate failed\n");
 	pci6254_reg_init(s);
 
-	s->mapaddr = mmap(NULL,PCI6254_MEM_SIZE,PROT_READ|PROT_WRITE|PROT_EXEC,MAP_SHARED,fd,0);
+	printf("PCI6254_MEM_SIZE: 0x%x\n", PCI6254_MEM_SIZE);
+	s->mapaddr = mmap2(NULL,PCI6254_MEM_SIZE,PROT_READ|PROT_WRITE|PROT_EXEC,MAP_SHARED,fd,0);
+	printf("s->mapaddr: 0x%x\n", s->mapaddr);
+	//s->mapaddr = malloc(PCI6254_MEM_SIZE);
 
 	memory_region_init_ram_ptr(&s->ram_vreg, "vreg",  PCI6254_MEM_SIZE, s->mapaddr);
 	memory_region_init_ram_ptr(&s->ram_vram, "vram",  PCI6254_MEM_SIZE, s->mapaddr+0x1000);

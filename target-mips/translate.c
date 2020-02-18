@@ -3573,6 +3573,7 @@ static void gen_trap (DisasContext *ctx, uint32_t opc,
         case OPC_TGEU:  /* rs >= rs unsigned */
         case OPC_TGEIU: /* r0 >= 0  unsigned */
             /* Always trap */
+            //printf(" EXCP_TRAP %s:%d\n", __func__, __LINE__);
             generate_exception(ctx, EXCP_TRAP);
             break;
         case OPC_TLT:   /* rs < rs           */
@@ -3613,6 +3614,7 @@ static void gen_trap (DisasContext *ctx, uint32_t opc,
             tcg_gen_brcond_tl(TCG_COND_EQ, t0, t1, l1);
             break;
         }
+        //printf(" EXCP_TRAP %s:%d\n", __func__, __LINE__);
         generate_exception(ctx, EXCP_TRAP);
         gen_set_label(l1);
     }
@@ -3644,16 +3646,19 @@ static void gen_compute_branch (DisasContext *ctx, uint32_t opc,
                                 int insn_bytes,
                                 int rs, int rt, int32_t offset)
 {
+	//printf("%s op: 0x%x, %d, rs: %d, rt: %d, offset: %d\n", __func__, opc, insn_bytes, rs, rt, offset);
     target_ulong btgt = -1;
     int blink = 0;
     int bcond_compute = 0;
     TCGv t0 = tcg_temp_new();
     TCGv t1 = tcg_temp_new();
 
+
     if (ctx->hflags & MIPS_HFLAG_BMASK) {
 #ifdef MIPS_DEBUG_DISAS
         LOG_DISAS("Branch in delay slot at PC 0x" TARGET_FMT_lx "\n", ctx->pc);
 #endif
+        //printf("Branch in delay slot at PC 0x" TARGET_FMT_lx "\n", ctx->pc);
         generate_exception(ctx, EXCP_RI);
         goto out;
     }
@@ -3671,6 +3676,7 @@ static void gen_compute_branch (DisasContext *ctx, uint32_t opc,
             bcond_compute = 1;
         }
         btgt = ctx->pc + insn_bytes + offset;
+        //printf(" OPC_BEQ btgt 0x" TARGET_FMT_lx "\n", btgt);
         break;
     case OPC_BGEZ:
     case OPC_BGEZAL:
@@ -3925,8 +3931,8 @@ static void gen_compute_branch (DisasContext *ctx, uint32_t opc,
             goto out;
         }
     }
-    MIPS_DEBUG("enter ds: link %d cond %02x target " TARGET_FMT_lx,
-               blink, ctx->hflags, btgt);
+    //printf("enter ds: link %d cond %02x target " TARGET_FMT_lx "\n",
+    //           blink, ctx->hflags, btgt);
 
     ctx->btarget = btgt;
     if (blink > 0) {
@@ -4689,11 +4695,11 @@ static void gen_mfc0(DisasContext *ctx, TCGv arg, int reg, int sel)
        goto die;
     }
     (void)rn; /* avoid a compiler warning */
-    LOG_DISAS("mfc0 %s (reg %d sel %d)\n", rn, reg, sel);
+    //printf("mfc0 1 %s (reg %d sel %d)\n", rn, reg, sel);
     return;
 
 die:
-    LOG_DISAS("mfc0 %s (reg %d sel %d)\n", rn, reg, sel);
+    //printf("mfc0 2 %s (reg %d sel %d)\n", rn, reg, sel);
     generate_exception(ctx, EXCP_RI);
 }
 
@@ -9651,6 +9657,7 @@ static int decode_extended_mips16_opc (CPUMIPSState *env, DisasContext *ctx,
         /* No delay slot, so just process as a normal instruction */
         break;
     case M16_OPC_BEQZ:
+		//printf(" M16_OPC_BEQZ %s:%d\n", __func__, __LINE__);
         gen_compute_branch(ctx, OPC_BEQ, 4, rx, 0, offset << 1);
         /* No delay slot, so just process as a normal instruction */
         break;
@@ -9859,6 +9866,7 @@ static int decode_mips16_opc (CPUMIPSState *env, DisasContext *ctx,
         *is_branch = 1;
         break;
     case M16_OPC_BEQZ:
+		//printf(" M16_OPC_BEQZ %s:%d\n", __func__, __LINE__);
         gen_compute_branch(ctx, OPC_BEQ, 2, rx, 0, ((int8_t)ctx->opcode) << 1);
         /* No delay slot, so just process as a normal instruction */
         break;
@@ -14388,6 +14396,10 @@ static void gen_mipsdsp_accinsn(DisasContext *ctx, uint32_t op1, uint32_t op2,
     MIPS_DEBUG("%s", opn);
 }
 
+void debug_me()
+{
+	printf("debug_me\n");
+}
 /* End MIPSDSP functions. */
 
 static void decode_opc (CPUMIPSState *env, DisasContext *ctx, int *is_branch)
@@ -14428,6 +14440,11 @@ static void decode_opc (CPUMIPSState *env, DisasContext *ctx, int *is_branch)
 
     gen_helper_2i(mypc, ctx->pc, ctx->opcode);
 
+	//printf("%s pc: 0x%08x op: 0x%08x\n", __func__, ctx->pc, op);
+	//printf("%s op: 0x%08x 0x%08x pc: " TARGET_FMT_lx "\n", __func__, op, ctx->opcode, ctx->pc);
+	if (ctx->opcode == 0x1280000b) {
+		//debug_me();
+	}
     switch (op) {
     case OPC_SPECIAL:
         op1 = MASK_SPECIAL(ctx->opcode);
@@ -15264,6 +15281,7 @@ static void decode_opc (CPUMIPSState *env, DisasContext *ctx, int *is_branch)
         break;
     case OPC_REGIMM:
         op1 = MASK_REGIMM(ctx->opcode);
+		//printf(" OPC_REGIMM: op: 0x%x op1: 0x%x\n", op, op1);
         switch (op1) {
         case OPC_BLTZ ... OPC_BGEZL: /* REGIMM branches */
         case OPC_BLTZAL ... OPC_BGEZALL:
@@ -15678,9 +15696,11 @@ gen_intermediate_code_internal (CPUMIPSState *env, TranslationBlock *tb,
             decode_opc(env, &ctx, &is_branch);
         } else if (ctx.insn_flags & ASE_MICROMIPS) {
             ctx.opcode = cpu_lduw_code(env, ctx.pc);
+			//printf("  decode_micromips_opc\n");
             insn_bytes = decode_micromips_opc(env, &ctx, &is_branch);
         } else if (ctx.insn_flags & ASE_MIPS16) {
             ctx.opcode = cpu_lduw_code(env, ctx.pc);
+			//printf("  decode_mips16_opc\n");
             insn_bytes = decode_mips16_opc(env, &ctx, &is_branch);
         } else {
             generate_exception(&ctx, EXCP_RI);
@@ -15748,6 +15768,14 @@ done_generating:
         tb->size = ctx.pc - pc_start;
         tb->icount = num_insns;
     }
+
+#if 0
+    printf("\n");
+    printf("IN: %s\n", lookup_symbol(pc_start));
+    target_disas(stdout, env, pc_start, ctx.pc - pc_start, 0);
+    printf("\n");
+#endif
+
 #ifdef DEBUG_DISAS
     LOG_DISAS("\n");
     if (qemu_loglevel_mask(CPU_LOG_TB_IN_ASM)) {
@@ -16030,6 +16058,7 @@ void cpu_state_reset(CPUMIPSState *env)
     env->CP0_Wired = 0;
     env->CP0_EBase = 0x80000000 | (cs->cpu_index & 0x3FF);
     env->CP0_Status = (1 << CP0St_BEV) | (1 << CP0St_ERL);
+    printf(" %s env->active_tc.PC: 0x%x env->CP0_Status: 0x%x\n", __func__, env->active_tc.PC, env->CP0_Status);
     /* vectored interrupts not implemented, timer on int 7,
        no performance counters. */
     env->CP0_IntCtl = 0xe0000000;

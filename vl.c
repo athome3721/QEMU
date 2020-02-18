@@ -1816,16 +1816,20 @@ void qemu_unregister_reset(QEMUResetHandler *func, void *opaque)
 
 void qemu_devices_reset(void)
 {
+//	printf("---enter:%s %s %s", __FILE__, __FUNCTION__, __LINE__);
+
     QEMUResetEntry *re, *nre;
 
     /* reset all devices */
     QTAILQ_FOREACH_SAFE(re, &reset_handlers, entry, nre) {
         re->func(re->opaque);
     }
+//  printf("---exit:%s %s %s", __FILE__, __FUNCTION__, __LINE__);
 }
 
 void qemu_system_reset(bool report)
 {
+//	printf("---enter:%s %s %s", __FILE__, __FUNCTION__, __LINE__);
     if (current_machine && current_machine->reset) {
         current_machine->reset();
     } else {
@@ -1835,6 +1839,7 @@ void qemu_system_reset(bool report)
         monitor_protocol_event(QEVENT_RESET, NULL);
     }
     cpu_synchronize_all_post_reset();
+//	printf("---exit:%s %s %s", __FILE__, __FUNCTION__, __LINE__);
 }
 
 void qemu_system_reset_request(void)
@@ -2797,7 +2802,30 @@ static int object_create(QemuOpts *opts, void *opaque)
 
 int main(int argc, char **argv, char **envp)
 {
-    int i;
+#if 1
+	// backtrace tool
+	HMODULE  g_hDll = LoadLibrary("W:\\loongnix_os\\qemu-1.4-32\\mips64el-softmmu\\exchndl.dll");
+#endif
+
+#if 0
+	printf("Please input anykey to continue\n");
+	getchar();
+	printf("continue\n");
+#endif
+
+	int i;
+    /*
+	for(i = 0; i < argc; i++){
+		printf("----------argv[%d] = %s---------\n", i, argv[i]);
+	}
+	i = 0;
+   
+	while(envp[i]){
+		printf("----------envp[%d] = %s---------\n", i, envp[i]);
+		i++;
+	}*/
+    i = 0;
+
     int snapshot, linux_boot;
     const char *icount_option = NULL;
     const char *initrd_filename;
@@ -2900,11 +2928,14 @@ int main(int argc, char **argv, char **envp)
             const QEMUOption *popt;
 
             popt = lookup_opt(argc, argv, &optarg, &optind);
+		//	printf("---QEMUOption: name=%s, flags=%d, index=%d, mask=%d\n", popt->name, popt->flags, popt->index, popt->arch_mask);
             switch (popt->index) {
             case QEMU_OPTION_nodefconfig:
+		//		printf("---QEMU_OPTION_nodefconfig\n");
                 defconfig = false;
                 break;
             case QEMU_OPTION_nouserconfig:
+		//		printf("---QEMU_OPTION_nouserconfig\n");
                 userconfig = false;
                 break;
             }
@@ -2919,7 +2950,7 @@ int main(int argc, char **argv, char **envp)
         }
     }
 
-    /* second pass of option parsing */
+    /* second pass of option parsing endline 3848*/
     optind = 1;
     for(;;) {
         if (optind >= argc)
@@ -2934,6 +2965,7 @@ int main(int argc, char **argv, char **envp)
                 printf("Option %s not supported for this target\n", popt->name);
                 exit(1);
             }
+			printf("---QEMUOption: name=%s, flags=%d, index=%d, mask=%d\n", popt->name, popt->flags, popt->index, popt->arch_mask);        			
             switch(popt->index) {
             case QEMU_OPTION_M:
                 machine = machine_parse(optarg);
@@ -3073,9 +3105,11 @@ int main(int argc, char **argv, char **envp)
                 }
                 break;
             case QEMU_OPTION_kernel:
+				printf("---QEMUOption: QEMU_OPTION_kernel:name=%s, flags=%d, index=%d, mask=%d\n", popt->name, popt->flags, popt->index, popt->arch_mask);             
                 qemu_opts_set(qemu_find_opts("machine"), 0, "kernel", optarg);
                 break;
             case QEMU_OPTION_initrd:
+				printf("---QEMUOption: QEMU_OPTION_initrd:name=%s, flags=%d, index=%d, mask=%d\n", popt->name, popt->flags, popt->index, popt->arch_mask);
                 qemu_opts_set(qemu_find_opts("machine"), 0, "initrd", optarg);
                 break;
             case QEMU_OPTION_append:
@@ -3217,6 +3251,7 @@ int main(int argc, char **argv, char **envp)
                 }
                 sz = QEMU_ALIGN_UP((uint64_t)value, 8192);
                 ram_size = sz;
+				printf(" QEMU_OPTION_m: %s value: 0x%llx ram_size: 0x%llx\n", end, value, ram_size);
                 if (ram_size != sz) {
                     fprintf(stderr, "qemu: ram size too large\n");
                     exit(1);
@@ -4196,6 +4231,7 @@ int main(int argc, char **argv, char **envp)
                                  .kernel_cmdline = kernel_cmdline,
                                  .initrd_filename = initrd_filename,
                                  .cpu_model = cpu_model };
+	printf("---args:kernel.filename=%s, cmdline=%s, initrd_filename=%s\n\n", kernel_filename, kernel_cmdline, initrd_filename);
     machine->init(&args);
 
     cpu_synchronize_all_post_init();
@@ -4259,7 +4295,7 @@ int main(int argc, char **argv, char **envp)
     os_setup_signal_handling();
 
 #ifdef CONFIG_VNC
-    /* init remote displays */
+    /* init remote displays 
     if (vnc_display) {
         Error *local_err = NULL;
         vnc_display_init(ds);
@@ -4274,7 +4310,7 @@ int main(int argc, char **argv, char **envp)
         if (show_vnc_port) {
             printf("VNC server running on `%s'\n", vnc_display_local_addr(ds));
         }
-    }
+    }*/
 #endif
 #ifdef CONFIG_SPICE
     if (using_spice && !qxl_enabled) {

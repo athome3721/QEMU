@@ -608,6 +608,8 @@ static void monitor_protocol_event_init(void)
  */
 void monitor_protocol_event(MonitorEvent event, QObject *data)
 {
+//	printf("---enter:%s %s %s", __FILE__, __FUNCTION__, __LINE__);
+
     QDict *qmp;
     const char *event_name;
 
@@ -627,6 +629,7 @@ void monitor_protocol_event(MonitorEvent event, QObject *data)
     trace_monitor_protocol_event(event, event_name, qmp);
     monitor_protocol_event_queue(event, QOBJECT(qmp));
     QDECREF(qmp);
+// printf("---exit:%s %s %s", __FILE__, __FUNCTION__, __LINE__);
 }
 
 static int do_qmp_capabilities(Monitor *mon, const QDict *params,

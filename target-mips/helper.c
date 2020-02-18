@@ -411,15 +411,17 @@ void do_interrupt (CPUMIPSState *env)
     int cause = -1;
     const char *name;
 
-    if (qemu_log_enabled() && env->exception_index != EXCP_EXT_INTERRUPT) {
+    //if (qemu_log_enabled() && env->exception_index != EXCP_EXT_INTERRUPT) {
         if (env->exception_index < 0 || env->exception_index > EXCP_LAST)
             name = "unknown";
         else
             name = excp_names[env->exception_index];
 
-        qemu_log("%s enter: PC " TARGET_FMT_lx " EPC " TARGET_FMT_lx " %s exception\n",
+#if 0
+        printf("\n\n\n%s enter: PC " TARGET_FMT_lx " EPC " TARGET_FMT_lx " %s exception\n\n\n\n",
                  __func__, env->active_tc.PC, env->CP0_EPC, name);
-    }
+#endif
+    //}
     if (env->exception_index == EXCP_EXT_INTERRUPT &&
         (env->hflags & MIPS_HFLAG_DM))
         env->exception_index = EXCP_DINT;
@@ -639,13 +641,15 @@ void do_interrupt (CPUMIPSState *env)
         printf("Invalid MIPS exception %d. Exiting\n", env->exception_index);
         exit(1);
     }
-    if (qemu_log_enabled() && env->exception_index != EXCP_EXT_INTERRUPT) {
-        qemu_log("%s: PC " TARGET_FMT_lx " EPC " TARGET_FMT_lx " cause %d\n"
-                "    S %08x C %08x A " TARGET_FMT_lx " D " TARGET_FMT_lx "\n",
+    //if (qemu_log_enabled() && env->exception_index != EXCP_EXT_INTERRUPT) {
+#if 0
+        printf("%s: PC " TARGET_FMT_lx " EPC " TARGET_FMT_lx " cause %d\n"
+                "    S %08x C %08x A " TARGET_FMT_lx " D " TARGET_FMT_lx " BEV: 0x%x\n",
                 __func__, env->active_tc.PC, env->CP0_EPC, cause,
                 env->CP0_Status, env->CP0_Cause, env->CP0_BadVAddr,
-                env->CP0_DEPC);
-    }
+                env->CP0_DEPC, env->CP0_Status & (1 << CP0St_BEV));
+#endif
+    //}
 #endif
     env->exception_index = EXCP_NONE;
 }

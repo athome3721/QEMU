@@ -433,6 +433,7 @@ static bool tci_compare64(uint64_t u0, uint64_t u1, TCGCond condition)
 tcg_target_ulong tcg_qemu_tb_exec(CPUArchState *cpustate, uint8_t *tb_ptr)
 {
     tcg_target_ulong next_tb = 0;
+//	printf("--enter:%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
 
     env = cpustate;
     tci_reg[TCG_AREG0] = (tcg_target_ulong)env;
@@ -1228,5 +1229,7 @@ tcg_target_ulong tcg_qemu_tb_exec(CPUArchState *cpustate, uint8_t *tb_ptr)
         assert(tb_ptr == old_code_ptr + op_size);
     }
 exit:
+//		printf("--exit:%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
+
     return next_tb;
 }

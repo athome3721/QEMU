@@ -228,6 +228,8 @@ void tcg_pool_reset(TCGContext *s)
 
 void tcg_context_init(TCGContext *s)
 {
+	printf("---enter:%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
+
     int op, total_args, n;
     TCGOpDef *def;
     TCGArgConstraint *args_ct;
@@ -258,16 +260,21 @@ void tcg_context_init(TCGContext *s)
     }
     
     tcg_target_init(s);
+	printf("---exit:%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
 }
 
 void tcg_prologue_init(TCGContext *s)
 {
+	printf("---enter:%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
+
     /* init global prologue and epilogue */
     s->code_buf = code_gen_prologue;
     s->code_ptr = s->code_buf;
+    printf(" %s s->code_ptr: 0x%x\n", __func__, s->code_ptr);
     tcg_target_qemu_prologue(s);
     flush_icache_range((tcg_target_ulong)s->code_buf,
                        (tcg_target_ulong)s->code_ptr);
+	printf("---exit:%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
 }
 
 void tcg_set_frame(TCGContext *s, int reg,
@@ -2645,7 +2652,7 @@ static void tcg_register_jit_int(void *buf_ptr, size_t buf_size,
     /* Enable this block to be able to debug the ELF image file creation.
        One can use readelf, objdump, or other inspection utilities.  */
     {
-        FILE *f = fopen("/tmp/qemu.jit", "w+b");
+        FILE *f = fopen("qemu.jit", "w+b");
         if (f) {
             if (fwrite(img, img_size, 1, f) != img_size) {
                 /* Avoid stupid unused return value warning for fwrite.  */

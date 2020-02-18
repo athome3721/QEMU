@@ -1845,6 +1845,7 @@ static int pci_add_option_rom(PCIDevice *pdev, bool is_default_rom)
     }
 
     path = qemu_find_file(QEMU_FILE_TYPE_BIOS, pdev->romfile);
+	printf(" path: %s  %s\n", path, pdev->romfile);
     if (path == NULL) {
         path = g_strdup(pdev->romfile);
     }

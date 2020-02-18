@@ -199,6 +199,13 @@ int cpu_gen_code(CPUArchState *env, TranslationBlock *tb, int *gen_code_size_ptr
     s->code_out_len += gen_code_size;
 #endif
 
+#if 0
+    printf("OUT: [size=%d]\n", *gen_code_size_ptr);
+    //log_disas(tb->tc_ptr, *gen_code_size_ptr);
+    disas(stdout, tb->tc_ptr, *gen_code_size_ptr);
+    printf("\n");
+#endif
+
 #ifdef DEBUG_DISAS
     if (qemu_loglevel_mask(CPU_LOG_TB_OUT_ASM)) {
         qemu_log("OUT: [size=%d]\n", *gen_code_size_ptr);
@@ -306,6 +313,8 @@ static inline void map_exec(void *addr, long size)
 
 static void page_init(void)
 {
+	printf("---enter:%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
+
     /* NOTE: we can always suppose that qemu_host_page_size >=
        TARGET_PAGE_SIZE */
 #ifdef _WIN32
@@ -390,6 +399,7 @@ static void page_init(void)
 #endif
     }
 #endif
+	printf("---exit:%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
 }
 
 static PageDesc *page_find_alloc(tb_page_addr_t index, int alloc)
@@ -574,6 +584,8 @@ static inline void *alloc_code_gen_buffer(void)
 
 static inline void code_gen_alloc(size_t tb_size)
 {
+	printf("---enter:%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
+
     code_gen_buffer_size = size_code_gen_buffer(tb_size);
     code_gen_buffer = alloc_code_gen_buffer();
     if (code_gen_buffer == NULL) {
@@ -591,10 +603,14 @@ static inline void code_gen_alloc(size_t tb_size)
     code_gen_prologue = code_gen_buffer + code_gen_buffer_size - 1024;
     code_gen_buffer_size -= 1024;
 
+    printf(" %s code_gen_prologue: 0x%x code_gen_buffer_size: 0x%x\n", __func__, code_gen_prologue, code_gen_buffer_size);
+
     code_gen_buffer_max_size = code_gen_buffer_size -
         (TCG_MAX_OP_SIZE * OPC_BUF_SIZE);
     code_gen_max_blocks = code_gen_buffer_size / CODE_GEN_AVG_BLOCK_SIZE;
     tbs = g_malloc(code_gen_max_blocks * sizeof(TranslationBlock));
+	
+	printf("---exit:%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
 }
 
 /* Must be called before using the QEMU cpus. 'tb_size' is the size
@@ -602,6 +618,7 @@ static inline void code_gen_alloc(size_t tb_size)
    size. */
 void tcg_exec_init(unsigned long tb_size)
 {
+	printf("---enter:%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
     cpu_gen_init();
     code_gen_alloc(tb_size);
     code_gen_ptr = code_gen_buffer;
@@ -612,6 +629,7 @@ void tcg_exec_init(unsigned long tb_size)
        initialize the prologue now.  */
     tcg_prologue_init(&tcg_ctx);
 #endif
+	printf("---exit:%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
 }
 
 bool tcg_enabled(void)

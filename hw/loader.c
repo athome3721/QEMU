@@ -554,6 +554,8 @@ static void rom_insert(Rom *rom)
         hw_error ("ROM images must be loaded at startup\n");
     }
 
+	printf(" %s %s 0x%llx 0x%x\n", __func__, rom->name, rom->addr, rom->romsize);
+
     /* list is ordered by load address */
     QTAILQ_FOREACH(item, &roms, next) {
         if (rom->addr >= item->addr)
@@ -687,6 +689,7 @@ int rom_load_all(void)
         if (rom->fw_file) {
             continue;
         }
+		printf("file: %s name: %s addr: 0x" TARGET_FMT_plx " rom_addr: 0x" TARGET_FMT_plx "\n", rom->fw_file, rom->name, addr, rom->addr);
         if (addr > rom->addr) {
             fprintf(stderr, "rom: requested regions overlap "
                     "(rom %s. free=0x" TARGET_FMT_plx

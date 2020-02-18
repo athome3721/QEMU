@@ -416,11 +416,14 @@ void cpu_synchronize_all_states(void)
 
 void cpu_synchronize_all_post_reset(void)
 {
+//	printf("---enter:%s %s %s", __FILE__, __FUNCTION__, __LINE__);
+
     CPUArchState *cpu;
 
     for (cpu = first_cpu; cpu; cpu = cpu->next_cpu) {
         cpu_synchronize_post_reset(cpu);
     }
+//	printf("---exit:%s %s %s", __FILE__, __FUNCTION__, __LINE__);
 }
 
 void cpu_synchronize_all_post_init(void)
@@ -816,6 +819,8 @@ static void *qemu_tcg_cpu_thread_fn(void *arg)
 {
     CPUState *cpu = arg;
     CPUArchState *env;
+	int i = 0;
+//	printf("--enter:%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
 
     qemu_tcg_init_cpu_signals();
     qemu_thread_get_self(cpu->thread);
@@ -832,20 +837,25 @@ static void *qemu_tcg_cpu_thread_fn(void *arg)
     /* wait for initial kick-off after machine start */
     while (ENV_GET_CPU(first_cpu)->stopped) {
         qemu_cond_wait(tcg_halt_cond, &qemu_global_mutex);
+//		printf("--qemu_cond_wait:%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
 
         /* process any pending work */
         for (env = first_cpu; env != NULL; env = env->next_cpu) {
             qemu_wait_io_event_common(ENV_GET_CPU(env));
+//			printf("--qemu_wait_io_event_common:%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
         }
     }
 
     while (1) {
-        tcg_exec_all();
+		//if(i%1000 == 0)printf("---start tcg_exec_all i=%d:%s %s %d\n", i, __FILE__, __FUNCTION__, __LINE__);
+		//i++;
+		tcg_exec_all();
         if (use_icount && qemu_clock_deadline(vm_clock) <= 0) {
             qemu_notify_event();
         }
         qemu_tcg_wait_io_event();
     }
+//	printf("---exit:%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
 
     return NULL;
 }
@@ -1132,6 +1142,7 @@ static int tcg_cpu_exec(CPUArchState *env)
 static void tcg_exec_all(void)
 {
     int r;
+//	printf("--enter:%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
 
     /* Account partial waits to the vm_clock.  */
     qemu_clock_warp(vm_clock);
@@ -1157,6 +1168,7 @@ static void tcg_exec_all(void)
         }
     }
     exit_request = 0;
+//	printf("--exit:%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
 }
 
 void set_numa_modes(void)
